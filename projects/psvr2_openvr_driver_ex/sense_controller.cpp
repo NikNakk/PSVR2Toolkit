@@ -9,15 +9,9 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <iostream>
-#include <iomanip>
 #include <string>
-#include <sstream>
 
-#include <timeapi.h>
 #include <windows.h>
-
-#pragma comment(lib, "winmm.lib")
 
 using namespace psvr2_toolkit;
 
@@ -269,9 +263,7 @@ void SenseThread() {
     // Wait out the duration
     while (elapsed < duration) {
       // Sleep to not eat up CPU cycles.
-      timeBeginPeriod(1); // Set system timer resolution to 1 ms
       SleepEx(1, TRUE);   // Sleep for 1ms, also be alertable for the AsyncFileWriter, which uses APCs.
-      timeEndPeriod(1);   // Restore system timer resolution
 
       QueryPerformanceCounter(&now);
       elapsed = now.QuadPart - start.QuadPart;
