@@ -263,7 +263,7 @@ void SenseThread() {
     // Wait out the duration
     while (elapsed < duration) {
       // Sleep to not eat up CPU cycles.
-      SleepEx(1, TRUE);   // Sleep for 1ms, also be alertable for the AsyncFileWriter, which uses APCs.
+      SleepEx(1, TRUE); // Sleep for 1ms, also be alertable for the AsyncFileWriter, which uses APCs.
 
       QueryPerformanceCounter(&now);
       elapsed = now.QuadPart - start.QuadPart;

@@ -27,8 +27,8 @@ void CommandThread::Stop() {
 }
 
 void CommandThread::ThreadLoop() {
-  CustomShareManager* customShareManager = CustomShareManager::getSingleton();
-  
+  CustomShareManager *customShareManager = CustomShareManager::getSingleton();
+
   customShareManager->claimDriverMutex();
 
   while (m_running) {

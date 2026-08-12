@@ -172,7 +172,6 @@ void CustomShareManager::releaseDriverMutex() {
   IpcMutex_Unlock(m_driverActiveMutex);
 }
 
-
 void CustomShareManager::setGazeStatus(const hmd2_gaze_status_t *pGazeStatus) {
   IpcMutex_Lock(m_gazeStatusMutex);
   m_pBufferData->gazeStatus.set(pGazeStatus);
@@ -303,11 +302,11 @@ void CustomShareManager::writePcm(int slot, VRControllerType controllerType, con
   }
 }
 
-void CustomShareManager::waitForPcmUpdate() { IpcBroadcast_Wait(m_pcmBroadcast, 1000); }
+bool CustomShareManager::waitForPcmUpdate() { return IpcBroadcast_Wait(m_pcmBroadcast, 1000); }
 
-void CustomShareManager::submitCommand(DriverCommand &command) {
+bool CustomShareManager::submitCommand(DriverCommand &command) {
   if (!this->getDriverActive()) {
-    return; // Without the driver, we will not get a response. Exit now.
+    return false; // Without the driver, we will not get a response. Return now.
   }
 
   IpcMutex_Lock(m_commandMutex);
@@ -315,16 +314,25 @@ void CustomShareManager::submitCommand(DriverCommand &command) {
   IpcMutex_Unlock(m_commandMutex);
 
   if (!ptr)
-    return; // Buffer full
+    return false; // Buffer full
 
   IpcBroadcast_NotifyAll(m_commandBroadcast);
+
+  auto start = std::chrono::steady_clock::now();
 
   while (!ptr->isFulfilled) {
     // Allow up to 5 seconds for the command to be fulfilled
     IpcBroadcast_Wait(m_commandBroadcast, 5000);
+
+    auto now = std::chrono::steady_clock::now();
+    if (now > start + std::chrono::milliseconds(5000)) {
+      break;
+    }
   }
 
   command = *ptr;
+
+  return command.isFulfilled;
 }
 
 DriverCommand *CustomShareManager::popCommand(uint32_t timeoutMs) {

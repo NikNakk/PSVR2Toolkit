@@ -232,7 +232,8 @@ public:
           double factor = elapsed / k_targetFloorInterval;
           this->currentDecayRate *= (0.95 + 0.05 * factor);
 
-          Util::DriverLog("[{}] Decay Rate {} -> {}", this->isLeft ? "L" : "R", lastDecayRate - (k_maxDecayRate / 2.0), this->currentDecayRate - (k_maxDecayRate / 2.0));
+          Util::DriverLog("[{}] Decay Rate {} -> {}", this->isLeft ? "L" : "R", lastDecayRate - (k_maxDecayRate / 2.0),
+                          this->currentDecayRate - (k_maxDecayRate / 2.0));
         }
 
         this->lastFloorHitTimestamp = now;
@@ -287,9 +288,9 @@ public:
 private:
   static constexpr double k_maxDecayRate = 2.0E-4;
   static constexpr double k_initialDecayRate = 1.5E-4;
-  static constexpr double k_debounceInterval = 0.5E6; // 0.5 seconds in microseconds
+  static constexpr double k_debounceInterval = 0.5E6;     // 0.5 seconds in microseconds
   static constexpr double k_targetFloorInterval = 10.0E6; // 10 seconds in microseconds
-  static constexpr double k_rampUpInterval = 50.0E6; // 50 seconds in microseconds
+  static constexpr double k_rampUpInterval = 50.0E6;      // 50 seconds in microseconds
 
   void *handle = NULL;
   int padHandle = -1;

@@ -49,7 +49,7 @@ public:
 #ifdef _WIN32
   void setupCAPIPath();
 #endif
-  
+
   bool getDriverActive();
   bool claimDriverMutex();
   void releaseDriverMutex();
@@ -68,9 +68,9 @@ public:
   void releaseSlot(int slot);
   bool isSlotAlive(int slot);
   void writePcm(int slot, VRControllerType controllerType, const unsigned char *pcm);
-  void waitForPcmUpdate();
+  bool waitForPcmUpdate();
 
-  void submitCommand(DriverCommand &command);
+  bool submitCommand(DriverCommand &command);
   DriverCommand *popCommand(uint32_t timeoutMs);
   void fulfillCommand(DriverCommand *command);
 
