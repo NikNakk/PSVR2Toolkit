@@ -504,7 +504,8 @@ public:
   void Initialize(this ShareManager &self, DWORD processInstanceId);
   void RegisterEventCallback(this ShareManager &self, uint64_t mask, std::function<void()> *pCallback);
   static void WaitDynamicEvent(GlobalEventContext **evtStruct);
-  void GetIntConfig(this ShareManager &self, int configId, long *outValue);
+  void GetIntConfig(this ShareManager &self, int configId, int64_t *outValue);
+  void SetIntConfig(this ShareManager &self, int configId, int64_t *value);
   uint32_t ReadStringConfig(this ShareManager &self, int configId, std::string &outStr);
   void WriteConfigString(this ShareManager &self, int configId, const std::string &str);
   uint32_t ReadStringConfig_Hook(this ShareManager &self, int configId, void *outStrObj);

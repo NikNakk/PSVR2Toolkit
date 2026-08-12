@@ -419,6 +419,7 @@ void ShareManager::InstallHooks() {
   HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x157f70), reinterpret_cast<void *>(&ShareManager::WaitDynamicEvent));
 
   HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x15d270), reinterpret_cast<void *>(&ShareManager::GetIntConfig));
+  HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x15f3d0), reinterpret_cast<void *>(&ShareManager::SetIntConfig));
   HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x15d3d0), reinterpret_cast<void *>(&ShareManager::ReadStringConfig_Hook));
   HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x15f470), reinterpret_cast<void *>(&ShareManager::WriteConfigString_Hook));
   HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x15d730), reinterpret_cast<void *>(&ShareManager::ReadLogStrings));
@@ -788,7 +789,7 @@ void ShareManager::WaitDynamicEvent(GlobalEventContext **ppCtx) {
   } while (pCtx->exitFlag == '\0');
 }
 
-void ShareManager::GetIntConfig(this ShareManager &self, int configId, long *outValue) {
+void ShareManager::GetIntConfig(this ShareManager &self, int configId, int64_t *outValue) {
   if (configId < 0 || configId >= SC_Max || !outValue)
     return;
 
@@ -799,12 +800,19 @@ void ShareManager::GetIntConfig(this ShareManager &self, int configId, long *out
   const char *strData = self.m_pMem->configs_9e00.str_configs[configId].stringData;
 
   if (strData[0] != '\0') {
-    *outValue = std::strtol(strData, nullptr, 10);
+    *outValue = std::strtoll(strData, nullptr, 10);
   }
 
   if (self.m_ipcConfigMutexes[configId]) {
     IpcMutex_Unlock(self.m_ipcConfigMutexes[configId]);
   }
+}
+
+void ShareManager::SetIntConfig(this ShareManager &self, int configId, int64_t *value) {
+  if (configId < 0 || configId >= SC_Max || !value)
+    return;
+
+  self.WriteConfigString(configId, std::to_string(*value));
 }
 
 static const char *GetHostStringPtr(const void *hostStrObj) {

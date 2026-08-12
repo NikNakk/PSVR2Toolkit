@@ -1,4 +1,5 @@
 #include "driver_interface/caesar_manager.h"
+#include "driver_interface/share_manager.h"
 #include "driver_host_proxy.h"
 #include "hmd2_gaze.h"
 #include "hmd_device_camera.h"
@@ -13,9 +14,6 @@
 #include <cstdint>
 
 namespace psvr2_toolkit {
-void *(*ShareManager__getInstance)();
-void (*ShareManager__getIntConfig)(void *thisPtr, uint32_t configId, int64_t *outValue);
-void (*ShareManager__setIntConfig)(void *thisPtr, uint32_t configId, int64_t *value);
 
 vr::VRInputComponentHandle_t eyeTrackingComponent = vr::k_ulInvalidInputComponentHandle;
 int64_t currentBrightness;
@@ -92,7 +90,7 @@ vr::EVRInitError sie__psvr2__HmdDevice__ActivateHook(void *thisptr, uint32_t unO
 
   // Fill in brightness from PSVR2 config to SteamVR settings key.
   // Also, "analogGain" is stored as a gamma corrected value.
-  ShareManager__getIntConfig(ShareManager__getInstance(), 2, &currentBrightness);
+  ShareManager::GetInstance()->GetIntConfig(SC_ScreenBrightness, &currentBrightness);
   vr::VRSettings()->SetFloat(vr::k_pch_SteamVR_Section, "analogGain", powf(static_cast<float>(currentBrightness) / 31.0f, 2.2f));
 
   // Set event handler for when brightness ("analogGain") changes.
@@ -101,7 +99,7 @@ vr::EVRInitError sie__psvr2__HmdDevice__ActivateHook(void *thisptr, uint32_t unO
       float currentFloatBrightness = powf(vr::VRSettings()->GetFloat(vr::k_pch_SteamVR_Section, "analogGain"), 1 / 2.2f);
       if (static_cast<int64_t>(ceilf(currentFloatBrightness * 31.0f)) != currentBrightness) {
         currentBrightness = static_cast<int64_t>(ceilf(currentFloatBrightness * 31.0f));
-        ShareManager__setIntConfig(ShareManager__getInstance(), 2, &currentBrightness);
+        ShareManager::GetInstance()->SetIntConfig(SC_ScreenBrightness, &currentBrightness);
       }
     }
   });
@@ -261,10 +259,6 @@ void HmdDeviceHooks::InstallHooks() {
   // sie::psvr2::HmdDevice::GetComponent
   HookLib::InstallHook(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x19EC60),
                        reinterpret_cast<void *>(sie__psvr2__HmdDevice__GetComponentHook), reinterpret_cast<void **>(&sie__psvr2__HmdDevice__GetComponent));
-
-  ShareManager__getInstance = decltype(ShareManager__getInstance)(pHmdDriverLoader->GetBaseAddress() + 0x15bbd0);
-  ShareManager__getIntConfig = decltype(ShareManager__getIntConfig)(pHmdDriverLoader->GetBaseAddress() + 0x15d270);
-  ShareManager__setIntConfig = decltype(ShareManager__setIntConfig)(pHmdDriverLoader->GetBaseAddress() + 0x15f3d0);
 }
 
 } // namespace psvr2_toolkit
