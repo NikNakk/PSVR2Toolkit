@@ -476,6 +476,8 @@ enum ShareConfigIndex {
   SC_Max = 11
 };
 
+enum ShareInstanceType { Other = 0, PSVR2Driver = 1, PSVR2Dialog = 2, PSVR2Overlay = 3, AsstAppDesk = 4, AsstAppVR = 5, MiniGUI = 6, VRTracker2PC = 7 };
+
 struct GlobalEventContext {
   HANDLE *hMutex;
   HANDLE *hEvent;
@@ -496,12 +498,12 @@ public:
   ~ShareManager();
 
   static ShareManager *GetInstance();
-  static void InitializeInstance(DWORD processInstanceId);
+  static void InitializeInstance(ShareInstanceType instanceType);
 
   static void InstallHooks();
   static void ShutdownInstance();
 
-  void Initialize(this ShareManager &self, DWORD processInstanceId);
+  void Initialize(this ShareManager &self, ShareInstanceType instanceType);
   void RegisterEventCallback(this ShareManager &self, uint64_t mask, std::function<void()> *pCallback);
   static void WaitDynamicEvent(GlobalEventContext **evtStruct);
   void GetIntConfig(this ShareManager &self, int configId, int64_t *outValue);
@@ -629,7 +631,7 @@ private:
   GlobalEventContext *m_pEventContext; // Offset 0x23d0, size 8 bytes, ends at 0x23d8
   HANDLE m_hSharedFileMapping;         // Offset 0x23d8, size 8 bytes, ends at 0x23e0
   VRSharedMemory *m_pMem;              // Offset 0x23e0, size 8 bytes, ends at 0x23e8
-  DWORD m_instanceId;                  // Offset 0x23e8, size 4 bytes, ends at 0x23ec
+  DWORD m_instanceType;                // Offset 0x23e8, size 4 bytes, ends at 0x23ec
   uint32_t m_inputSequences[3] = {0};  // Offset 0x23ec, size 12 bytes, ends at 0x23f8
   uint32_t m_poseSequences[3] = {0};   // Offset 0x23f8, size 12 bytes, ends at 0x2404
   uint32_t m_sequence[1] = {0};        // Offset 0x2404, size 4 bytes, ends at 0x2408
@@ -659,8 +661,8 @@ private:
   static unsigned __stdcall WorkerThread_Unconditional(void *pContext);
   static unsigned __stdcall EvfWorkerThread_Conditional(void *pContext);
   static unsigned __stdcall CameraMonitorThread(void *pContext);
-  void InitializeSub_ad30(this ShareManager &self);
-  void InitializeSub_bdb0(this ShareManager &self);
+  void InitializeConfig(this ShareManager &self);
+  void LoadConfig(this ShareManager &self);
 
   // IPC helper mutex locks (we'll use CrossIPC here later)
   void Lock(int idx);

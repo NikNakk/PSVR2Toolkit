@@ -282,7 +282,7 @@ bool ProcessOwnedMutex::IsFreeOrOwned() {
 ShareManager *ShareManager::s_instance = nullptr;
 bool ShareManager::s_isInitialized = false;
 
-ShareManager::ShareManager() : m_hSharedFileMapping(nullptr), m_pMem(nullptr), m_instanceId(0) {
+ShareManager::ShareManager() : m_hSharedFileMapping(nullptr), m_pMem(nullptr), m_instanceType(0) {
   memset(m_hConfigMutexes, 0, sizeof(m_hConfigMutexes));
   memset(m_hEvents, 0, sizeof(m_hEvents));
   memset(m_hMutexes, 0, sizeof(m_hMutexes));
@@ -299,7 +299,7 @@ ShareManager::ShareManager() : m_hSharedFileMapping(nullptr), m_pMem(nullptr), m
   static_assert(offsetof(ShareManager, m_pEventContext) == 0x23d0, "m_pEventContext offset mismatch");
   static_assert(offsetof(ShareManager, m_hSharedFileMapping) == 0x23d8, "m_hSharedFileMapping offset mismatch");
   static_assert(offsetof(ShareManager, m_pMem) == 0x23e0, "m_pMem offset mismatch");
-  static_assert(offsetof(ShareManager, m_instanceId) == 0x23e8, "m_instanceId offset mismatch");
+  static_assert(offsetof(ShareManager, m_instanceType) == 0x23e8, "m_instanceType offset mismatch");
   static_assert(offsetof(ShareManager, m_inputSequences) == 0x23ec, "m_inputSequences offset mismatch");
   static_assert(offsetof(ShareManager, m_poseSequences) == 0x23f8, "m_poseSequences offset mismatch");
   static_assert(offsetof(ShareManager, m_sequence) == 0x2404, "m_sequence offset mismatch");
@@ -389,14 +389,10 @@ ShareManager *ShareManager::GetInstance() {
   return s_instance;
 }
 
-void ShareManager::InitializeInstance(DWORD processInstanceId) {
+void ShareManager::InitializeInstance(ShareInstanceType instanceType) {
   s_isInitialized = true;
 
-  if (s_instance == nullptr) {
-    s_instance = new ShareManager();
-  }
-
-  s_instance->Initialize(processInstanceId);
+  GetInstance()->Initialize(instanceType);
 }
 
 void ShareManager::ShutdownInstance() {
@@ -592,10 +588,8 @@ unsigned __stdcall ShareManager::CameraMonitorThread(void *pContext) {
   return 0;
 }
 
-void ShareManager::Initialize(this ShareManager &self, DWORD processInstanceId) {
-  OutputDebugStringA("ShareManager::Initialize");
-
-  self.m_instanceId = processInstanceId;
+void ShareManager::Initialize(this ShareManager &self, ShareInstanceType instanceType) {
+  self.m_instanceType = instanceType;
 
   for (int i = 0; i < SR_Max; ++i) {
     self.m_ipcEvents[i] = CreateIpcEvent(SharedResourceNames[i][0], true);
@@ -656,7 +650,7 @@ void ShareManager::Initialize(this ShareManager &self, DWORD processInstanceId) 
   for (int group = 0; group < 3; group++) {
     for (int slot = 0; slot < 64; slot++) {
       InputSlotMeta &slotMeta = self.m_pMem->input_meta.groups[group].slots[slot];
-      if (slotMeta.state == 2 || (self.m_instanceId == 1 && slotMeta.state == 3)) {
+      if (slotMeta.state == 2 || (self.m_instanceType == 1 && slotMeta.state == 3)) {
         slotMeta.state = 0;
         slotMeta.read_counter = 0;
       }
@@ -666,7 +660,7 @@ void ShareManager::Initialize(this ShareManager &self, DWORD processInstanceId) 
   for (int group = 0; group < 3; group++) {
     for (int slot = 0; slot < 64; slot++) {
       PoseSlotMeta &slotMeta = self.m_pMem->pose_meta.groups[group].slots[slot];
-      if (slotMeta.state == 2 || (self.m_instanceId == 1 && slotMeta.state == 3)) {
+      if (slotMeta.state == 2 || (self.m_instanceType == 1 && slotMeta.state == 3)) {
         slotMeta.state = 0;
         slotMeta.read_counter = 0;
       }
@@ -675,7 +669,7 @@ void ShareManager::Initialize(this ShareManager &self, DWORD processInstanceId) 
 
   for (int i = 0; i < 8; i++) {
     ImageSlotMeta &slot = self.m_pMem->image_meta.slots[i];
-    if (slot.state == 2 || (self.m_instanceId == 1 && slot.state == 3)) {
+    if (slot.state == 2 || (self.m_instanceType == 1 && slot.state == 3)) {
       slot.state = 0;
       slot.sequenceId = 0;
     }
@@ -683,7 +677,7 @@ void ShareManager::Initialize(this ShareManager &self, DWORD processInstanceId) 
 
   for (int i = 0; i < 8; i++) {
     PlayareaSlotState &slot = self.m_pMem->playarea_meta.playarea_states[i];
-    if (slot.state == 2 || (self.m_instanceId == 1 && slot.state == 3)) {
+    if (slot.state == 2 || (self.m_instanceType == 1 && slot.state == 3)) {
       slot.state = 0;
       slot.sequenceId = 0;
     }
@@ -698,10 +692,10 @@ void ShareManager::Initialize(this ShareManager &self, DWORD processInstanceId) 
     self.m_hConfigMutexes[i] = rawMtx ? new HANDLE(reinterpret_cast<HANDLE>(rawMtx)) : nullptr;
   }
 
-  self.InitializeSub_ad30();
+  self.InitializeConfig();
 
-  if (self.m_instanceId == 1 || self.m_instanceId == 4) {
-    self.InitializeSub_bdb0();
+  if (self.m_instanceType == 1 || self.m_instanceType == 4) {
+    self.LoadConfig();
 
     void *threadInfo2 = operator new(0x10);
     if (threadInfo2) {
@@ -728,9 +722,9 @@ void ShareManager::Initialize(this ShareManager &self, DWORD processInstanceId) 
 
   double timestamp = (static_cast<double>(qpcCount.QuadPart) / static_cast<double>(qpcFreq.QuadPart)) * 1000000.0;
 
-  self.m_pMem->watchdog.timestamps[self.m_instanceId] = timestamp;
-  self.m_pMem->watchdog.pids[self.m_instanceId] = GetCurrentProcessId();
-  self.m_pMem->watchdog.states[self.m_instanceId] = 0x29;
+  self.m_pMem->watchdog.timestamps[self.m_instanceType] = timestamp;
+  self.m_pMem->watchdog.pids[self.m_instanceType] = GetCurrentProcessId();
+  self.m_pMem->watchdog.states[self.m_instanceType] = 0x29;
 
   // Start the camera monitoring thread
   unsigned int monitorThreadId;
@@ -937,7 +931,7 @@ void ShareManager::WriteLogString(this ShareManager &self, char level, const cha
   }
 
   LogMetadata &meta = self.m_pMem->logs.log_meta[head];
-  meta.instanceId = static_cast<uint8_t>(self.m_instanceId);
+  meta.instanceId = static_cast<uint8_t>(self.m_instanceType);
   meta.level = level;
   meta.pad = 0;
 
@@ -1729,7 +1723,7 @@ unsigned __stdcall ShareManager::EvfWorkerThread_Conditional(void *pContext) {
   return 0;
 }
 
-void ShareManager::InitializeSub_ad30(this ShareManager &self) {
+void ShareManager::InitializeConfig(this ShareManager &self) {
   self.m_configMappings[SC_LastRecordedDateTime] = {"SafetyNotice", "LastRecordedDateTime", ""};
   self.m_configMappings[SC_VibrationStrength] = {"Controller", "VibrationStrength", "1"};
   self.m_configMappings[SC_ScreenBrightness] = {"HMD", "ScreenBrightness", "31"};
@@ -1770,7 +1764,7 @@ void ShareManager::InitializeSub_ad30(this ShareManager &self) {
   }
 }
 
-void ShareManager::InitializeSub_bdb0(this ShareManager &self) {
+void ShareManager::LoadConfig(this ShareManager &self) {
   uint64_t baseAddress = HmdDriverLoader::Instance()->GetBaseAddress();
   auto ValidateConfig = reinterpret_cast<bool (*)(const ShareManager *self, int configId, const char *str)>(baseAddress + 0x15c230);
 
