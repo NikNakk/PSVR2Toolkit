@@ -12,6 +12,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 namespace psvr2_toolkit {
 
@@ -107,6 +108,9 @@ vr::EVRInitError sie__psvr2__HmdDevice__ActivateHook(void *thisptr, uint32_t unO
   bool enableCamera = vr::VRSettings()->GetBool(vr::k_pch_Camera_Section, vr::k_pch_Camera_EnableCamera_Bool);
 
   if (!Util::IsRunningOnWine() || enableCamera) {
+    HmdDeviceCamera *pHmdDeviceCamera = HmdDeviceCamera::Instance();
+    pHmdDeviceCamera->LoadCalibration();
+
     vr::VRProperties()->SetBoolProperty(ulPropertyContainer, vr::Prop_AllowCameraToggle_Bool, true);
     vr::VRProperties()->SetBoolProperty(ulPropertyContainer, vr::Prop_HasCamera_Bool, true);
     vr::VRProperties()->SetBoolProperty(ulPropertyContainer, vr::Prop_HasCameraComponent_Bool, true);
@@ -117,13 +121,40 @@ vr::EVRInitError sie__psvr2__HmdDevice__ActivateHook(void *thisptr, uint32_t unO
     vr::VRProperties()->SetUint64Property(ulPropertyContainer, vr::Prop_FirmwareVersion_Uint64, 0x56456BA0);
     vr::VRProperties()->SetUint64Property(ulPropertyContainer, vr::Prop_CameraFirmwareVersion_Uint64, 0x200040049);
 
-    // TODO: make this not hardcoded
-    vr::HmdMatrix34_t cameraToHeadTransforms[2]{
-        {{{0.96483f, -0.00285f, 0.26284f, -0.05384f}, {-0.12877f, 0.86660f, 0.48210f, -0.03609f}, {-0.22915f, -0.49899f, 0.83576f, -0.09910f}}},
-        {{{0.96546f, 0.00490f, -0.26052f, 0.02514f}, {0.12543f, 0.86764f, 0.48112f, -0.03605f}, {0.22840f, -0.49717f, 0.83705f, -0.09950f}}}};
+    vr::HmdMatrix34_t cameraToHeadTransforms[2]{};
 
-    cameraToHeadTransforms[1] = HmdMath::convert44to34(HmdMath::multiplyMatrix(
-        HmdMath::convert34to44(cameraToHeadTransforms[1]), HmdMath::convert34to44(HmdMath::createTransformMatrixFromEuler({0, 0, 0}, 2.0f, 0.0f, 0.0f))));
+    ShareManager *pShareManager = ShareManager::GetInstance();
+    if (pShareManager) {
+      uint8_t d0cBuffer[0x800] = {0};
+      uint32_t counter = 0;
+      pShareManager->ReadCalib_0xd0c(d0cBuffer, &counter);
+
+      if (counter > 0) {
+        float *r0_raw = reinterpret_cast<float *>(d0cBuffer + 0x6f0);
+        float *r1_raw = reinterpret_cast<float *>(d0cBuffer + 0x7dc);
+
+        // TODO: figure out what values in ConfigManager could give us these numbers.
+        const float headOffsetLeft[3] = {-0.04f, -0.03309f, -0.0935f};
+        const float headOffsetRight[3] = {0.04f, -0.03309f, -0.0935f};
+
+        const float radX = -15.0f * std::numbers::pi / 180.0f;
+        const float cosX = std::cos(radX);
+        const float sinX = std::sin(radX);
+        const float rx15[9] = {1.0f, 0.0f, 0.0f, 0.0f, cosX, -sinX, 0.0f, sinX, cosX};
+
+        auto applyPitchAndOffset = [&](const float *r_raw, const float offset[3], const float *rotation, vr::HmdMatrix34_t &outTransform) {
+          for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+              outTransform.m[i][j] = rotation[i * 3 + 0] * r_raw[0 * 3 + j] + rotation[i * 3 + 1] * r_raw[1 * 3 + j] + rotation[i * 3 + 2] * r_raw[2 * 3 + j];
+            }
+            outTransform.m[i][3] = offset[i];
+          }
+        };
+
+        applyPitchAndOffset(r0_raw, headOffsetLeft, rx15, cameraToHeadTransforms[0]);
+        applyPitchAndOffset(r1_raw, headOffsetRight, rx15, cameraToHeadTransforms[1]);
+      }
+    }
 
     vr::VRProperties()->SetProperty(ulPropertyContainer, vr::Prop_CameraToHeadTransform_Matrix34, &cameraToHeadTransforms, sizeof(vr::HmdMatrix34_t),
                                     vr::k_unHmdMatrix34PropertyTag);
@@ -139,20 +170,17 @@ vr::EVRInitError sie__psvr2__HmdDevice__ActivateHook(void *thisptr, uint32_t unO
     vr::VRProperties()->SetProperty(ulPropertyContainer, vr::Prop_CameraDistortionFunction_Int32_Array, &cameraDistortionFunction,
                                     sizeof(cameraDistortionFunction), vr::k_unInt32PropertyTag);
 
-    float cameraDistortionCoeffs[2][vr::k_unMaxDistortionFunctionParameters] = {{8.925063f, -11.718638f, 6.383888f, -1.237600f, 0.0f, 0.0f, 0.0f, 0.0f},
-                                                                                {8.937389f, -11.752472f, 6.413345f, -1.245505f, 0.0f, 0.0f, 0.0f, 0.0f}};
-
-    vr::VRProperties()->SetProperty(ulPropertyContainer, vr::Prop_CameraDistortionCoefficients_Float_Array, &cameraDistortionCoeffs,
-                                    sizeof(cameraDistortionCoeffs), vr::k_unFloatPropertyTag);
+    float cameraDistortionCoeffs[2][vr::k_unMaxDistortionFunctionParameters];
+    memcpy(cameraDistortionCoeffs, pHmdDeviceCamera->fittedCoefficients, sizeof(cameraDistortionCoeffs));
+    vr::VRProperties()->SetProperty(ulPropertyContainer, vr::Prop_CameraDistortionCoefficients_Float_Array, cameraDistortionCoeffs,
+                                    sizeof(cameraDistortionCoeffs), vr::k_unDoublePropertyTag);
 
     vr::HmdVector4_t whiteBalance[2] = {{1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f}};
     vr::VRProperties()->SetProperty(ulPropertyContainer, vr::Prop_CameraWhiteBalance_Vector4_Array, whiteBalance, sizeof(whiteBalance),
                                     vr::k_unHmdVector4PropertyTag);
 
-    vr::VRProperties()->SetFloatProperty(ulPropertyContainer, vr::Prop_CameraExposureTime_Float, 1.0f / 60.0f);
+    vr::VRProperties()->SetFloatProperty(ulPropertyContainer, vr::Prop_CameraExposureTime_Float, 1.0f / 59.94f);
     vr::VRProperties()->SetFloatProperty(ulPropertyContainer, vr::Prop_CameraGlobalGain_Float, 1.0f);
-
-    HmdDeviceCamera *pHmdDeviceCamera = HmdDeviceCamera::Instance();
 
     vr::EVRInitError eError;
     pHmdDeviceCamera->pVRBlockQueue = (vr::IVRBlockQueue *)vr::VRDriverContext()->GetGenericInterface(vr::IVRBlockQueue_Version, &eError);

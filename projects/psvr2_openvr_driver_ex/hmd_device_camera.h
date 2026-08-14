@@ -1,9 +1,10 @@
 #pragma once
 
 #include <openvr_driver.h>
+
+#include "img_utils.h"
 #include "openvr_driver_internal.h"
-#include <thread>
-#include <queue>
+
 #include <mutex>
 
 const int IMAGE_WIDTH = 1016;
@@ -22,17 +23,35 @@ namespace psvr2_toolkit {
 
 enum CameraUser : uint8_t { CameraUser_Hmd = 1 << 0, CameraUser_Ipc = 1 << 1, CameraUser_PlayArea = 1 << 2 };
 
+struct CameraCalibration {
+  float fx = 0.0f;
+  float fy = 0.0f;
+  float cx = 0.0f;
+  float cy = 0.0f;
+  DistortionParameters params = {{0}};
+  bool loaded = false;
+};
+
 class HmdDeviceCamera : public vr::IVRCameraComponent {
 public:
+  HmdDeviceCamera();
   static HmdDeviceCamera *Instance();
+  void LoadCalibration();
   void UploadBC4(uint64_t tickTime, uint8_t *data);
   bool CameraStreamEnabled();
   void SetUserBit(CameraUser user, bool enable);
+  bool LoadCalibrationFromShareManager();
 
+  DistortionParameters distortionParameters;
+  double fittedCoefficients[2][8];
+  CameraCalibration m_calibration[2];
   vr::IVRBlockQueue *pVRBlockQueue = nullptr;
   vr::PropertyContainerHandle_t blockQueueHandle;
   bool shouldSubmit = false;
   uint64_t frameSequence = 0;
+
+private:
+  void FitDistortionCoefficients();
 
   /** IVRCameraComponent **/
 
