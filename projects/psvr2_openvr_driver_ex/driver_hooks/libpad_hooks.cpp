@@ -12,11 +12,12 @@
 
 namespace psvr2_toolkit {
 
+#pragma pack(push, 1)
 struct ProcessedControllerState {
   uint64_t hostReceiveTime;
   uint8_t sequenceNumber;
   uint8_t triggerFeedbackMode;
-  uint8_t unknown0x12[2];
+  uint8_t unknown0x0A[10];
   uint32_t buttons;
   uint8_t leftStickX;
   uint8_t leftStickY;
@@ -34,7 +35,7 @@ struct ProcessedControllerState {
   int16_t accelerometerX;
   int16_t accelerometerY;
   int16_t accelerometerZ;
-  uint8_t unknown0x32[0xC];
+  uint8_t unknown0x32[0x0C];
   uint8_t leftTriggerFeedback;
   uint8_t rightTriggerFeedback;
   uint8_t triggerFeedbackLoc;
@@ -47,7 +48,10 @@ struct ProcessedControllerState {
   uint32_t loopbackTimestamp;
   uint8_t leftBattery;
   uint8_t rightBattery;
+  uint8_t padding[6];
 };
+#pragma pack(pop)
+static_assert(sizeof(ProcessedControllerState) == 0x70, "Size of ProcessedControllerState is not 0x70 bytes!");
 
 struct HidDeviceDescriptor {
   uint32_t unknown1[2];
@@ -124,8 +128,6 @@ const int32_t k_broadPhasePeriod = 32;
 const int32_t k_bgPhasePeriod = 20;
 const int32_t k_stablePhasePeriod = 9;
 
-uintptr_t packetRecievedReturnAddress = 0;
-
 enum class CalibrationState {
   Idle = -1,
   Start,
@@ -193,20 +195,10 @@ uint32_t libpad_hostToDeviceHook(LibpadTimeSync *timeSync, uint32_t host, uint32
   return 0;
 }
 
-uint32_t libpad_deviceToHostHook(LibpadTimeSync *timeSync, uint32_t device, ProcessedControllerState *outHost) {
+uint32_t libpad_deviceToHostHook(LibpadTimeSync *timeSync, uint32_t device, void *outHost) {
   SenseController &senseController = SenseController::GetControllerByIsLeft(timeSync->isLeft);
 
   uint64_t currentTime = GetHostTimestamp();
-
-  // We need a specific caller that actually passes ProcessedControllerState* into outHost.
-  // This caller should be from when a controller packet is received.
-  if (reinterpret_cast<uintptr_t>(_ReturnAddress()) == packetRecievedReturnAddress) {
-    uint32_t deviceTimestamp = outHost->deviceTimestamp / k_unSenseUnitsPerMicrosecond;
-
-    int32_t clockOffset = GetWraparoundDifference(deviceTimestamp, static_cast<uint32_t>(currentTime));
-
-    senseController.AddTimestampOffsetSample(static_cast<double>(clockOffset));
-  }
 
   // Translate the device timestamp back to the host's 64-bit time domain.
   uint32_t hostTime =
@@ -214,7 +206,9 @@ uint32_t libpad_deviceToHostHook(LibpadTimeSync *timeSync, uint32_t device, Proc
 
   int32_t difference = GetWraparoundDifference(hostTime, static_cast<uint32_t>(currentTime));
 
-  outHost->hostReceiveTime = currentTime + difference;
+  if (outHost) {
+    *reinterpret_cast<uint64_t *>(outHost) = currentTime + difference;
+  }
 
   return 0;
 }
@@ -232,7 +226,6 @@ void libpad_SetSyncLedCommandHook(LibpadTimeSync *timeSync, LibpadLedSync *ledSy
 
   switch (ledCommand->type) {
   case CommandType::SET_SYNC_PHASE:
-
     // Use lower LED period time for better battery life.
     switch (ledCommand->payload.syncPhase.phase) {
     case LedPhase::PRESCAN:
@@ -584,54 +577,6 @@ void logDeviceTrackingStateHook(void *session, int32_t deviceType, uint64_t time
   logDeviceTrackingState(session, deviceType, timestamp, previousPose, previousMeta, currentPose, currentMeta);
 }
 
-HidDeviceDescriptor *(*libpad_CreateHidDevice)(HidDeviceDescriptor *device, const wchar_t *name, int32_t deviceType) = nullptr;
-HidDeviceDescriptor *libpad_CreateHidDeviceHook(HidDeviceDescriptor *device, const wchar_t *name, int32_t deviceType) {
-  Util::DriverLog("libpad_CreateHidDeviceHook called for device: {}, type: {}", Util::WideStringToUTF8(name), deviceType);
-
-  HidDeviceDescriptor *result = libpad_CreateHidDevice(device, name, deviceType);
-
-  bool isBluetooth = false;
-
-  if (device->controllerFileHandle && device->controllerFileHandle != INVALID_HANDLE_VALUE) {
-    PHIDP_PREPARSED_DATA preparsedData;
-
-    if (HidD_GetPreparsedData(device->controllerFileHandle, &preparsedData)) {
-      HIDP_CAPS caps;
-
-      if (HidP_GetCaps(preparsedData, &caps) == HIDP_STATUS_SUCCESS) {
-        // Sony Sense BT reports are 78 bytes.
-        isBluetooth = (caps.InputReportByteLength == 78);
-
-        Util::DriverLog("Detected Connection: {} (Report Size: {})", isBluetooth ? "Bluetooth" : "USB", caps.InputReportByteLength);
-      }
-
-      HidD_FreePreparsedData(preparsedData);
-    }
-  }
-
-  if (deviceType == k_libpadDeviceTypeSenseLeft) {
-    SenseController::GetLeftController().SetHandle(isBluetooth ? device->controllerFileHandle : NULL, result->padHandle);
-  } else if (deviceType == k_libpadDeviceTypeSenseRight) {
-    SenseController::GetRightController().SetHandle(isBluetooth ? device->controllerFileHandle : NULL, result->padHandle);
-  }
-
-  return result;
-}
-
-void (*libpad_Disconnect)(int32_t device) = nullptr;
-void libpad_DisconnectHook(int32_t device) {
-  Util::DriverLog("libpad_DisconnectHook called for device handle: {}", device);
-
-  try {
-    SenseController &controller = SenseController::GetControllerByPadHandle(device);
-    controller.SetHandle(NULL, -1);
-  } catch (const std::runtime_error &) {
-    // No controller with the given pad handle.
-  }
-
-  libpad_Disconnect(device);
-}
-
 int32_t (*libpad_SendOutputReport)(int32_t device, const uint8_t *buffer, uint16_t size) = nullptr;
 int32_t libpad_SendOutputReportHook(int32_t device, const uint8_t *buffer, uint16_t size) {
   if (size != sizeof(SenseControllerPCModePacket_t)) {
@@ -652,13 +597,285 @@ int32_t libpad_SendOutputReportHook(int32_t device, const uint8_t *buffer, uint1
   return 0;
 }
 
+static int (*g_fn_libpadIsInitialized)() = nullptr;
+static void (*g_fn_libpadResendDeviceSettings)(int32_t padHandle) = nullptr;
+static void (*g_fn_libpadAppendReceiveDataSense)(int32_t padHandle, ProcessedControllerState *pState, uint8_t isBt) = nullptr;
+static int32_t (*g_fn_libpadCreateDeviceSense)(int32_t padHandle, uint16_t devType, uint16_t subId1, uint32_t devInterface, void *param_132, void *param_1b4,
+                                               uint32_t isBt, const void *calibInfo, uint8_t flag) = nullptr;
+static void (*g_fn_libpadFreeDevice)(int32_t padHandle) = nullptr;
+static char (*g_fn_isSense)(uint16_t vid, uint16_t pid) = nullptr;
+static int (*g_fn_libpadDisconnect)(void *pDev, int32_t reason) = nullptr;
+static int (*g_fn_checkReportSize)(void *pDev, size_t reportSize, uint32_t caps) = nullptr;
+static int (*g_fn_checkSupportedFeatureReport)(void *pDev, void *pMem, uint16_t caps) = nullptr;
+static void (*g_fn_libpadFreeHidDevice)(void *pDev) = nullptr;
+static void (*g_fn_freeThreadHandle)(uintptr_t threadHandle) = nullptr;
+static int (*g_fn_getFirmwareInfo)(void *pDev, void *pBuf, size_t size, uint8_t isBt) = nullptr;
+static void (*g_fn_parseSenseInputReport)(void *pDev, const void *pReport, uint32_t size, uint8_t isBt, ProcessedControllerState *pState) = nullptr;
+static void (*g_fn_parseCalibration)(void *pOutCalib, const void *pFeatureBuf, int32_t chunkIndex) = nullptr;
+static int (*g_fn_libpadDeviceLock)() = nullptr;
+static int (*g_fn_libpadDeviceUnlock)() = nullptr;
+static char (*g_fn_hasCrcErrorOnBtHid)(uint8_t reportType, const void *pData, uint32_t size) = nullptr;
+
+static uint8_t *g_p_InputDeviceReportThreadLoop = nullptr;
+static uint8_t *g_p_StopThread = nullptr;
+static uintptr_t *g_p_deviceThreads = nullptr;
+
+static void ResolveLibpadSymbols(uintptr_t baseAddress) {
+  g_fn_libpadIsInitialized = decltype(g_fn_libpadIsInitialized)(baseAddress + 0x1BC440);
+  g_fn_libpadResendDeviceSettings = decltype(g_fn_libpadResendDeviceSettings)(baseAddress + 0x1C1720);
+  g_fn_libpadAppendReceiveDataSense = decltype(g_fn_libpadAppendReceiveDataSense)(baseAddress + 0x1C6EE0);
+  g_fn_libpadCreateDeviceSense = decltype(g_fn_libpadCreateDeviceSense)(baseAddress + 0x1C7B10);
+  g_fn_libpadFreeDevice = decltype(g_fn_libpadFreeDevice)(baseAddress + 0x1C7E90);
+  g_fn_isSense = decltype(g_fn_isSense)(baseAddress + 0x1C9440);
+  g_fn_libpadDisconnect = decltype(g_fn_libpadDisconnect)(baseAddress + 0x1CA7E0);
+  g_fn_checkReportSize = decltype(g_fn_checkReportSize)(baseAddress + 0x1CC9F0);
+  g_fn_checkSupportedFeatureReport = decltype(g_fn_checkSupportedFeatureReport)(baseAddress + 0x1CCA80);
+  g_fn_libpadFreeHidDevice = decltype(g_fn_libpadFreeHidDevice)(baseAddress + 0x1CE6C0);
+  g_fn_freeThreadHandle = decltype(g_fn_freeThreadHandle)(baseAddress + 0x1CE8A0);
+  g_fn_getFirmwareInfo = decltype(g_fn_getFirmwareInfo)(baseAddress + 0x1CFCA0);
+  g_fn_parseSenseInputReport = decltype(g_fn_parseSenseInputReport)(baseAddress + 0x1D1D10);
+  g_fn_parseCalibration = decltype(g_fn_parseCalibration)(baseAddress + 0x1D2A90);
+  g_fn_libpadDeviceLock = decltype(g_fn_libpadDeviceLock)(baseAddress + 0x1D42D0);
+  g_fn_libpadDeviceUnlock = decltype(g_fn_libpadDeviceUnlock)(baseAddress + 0x1D4300);
+  g_fn_hasCrcErrorOnBtHid = decltype(g_fn_hasCrcErrorOnBtHid)(baseAddress + 0x1D43F0);
+
+  g_p_InputDeviceReportThreadLoop = decltype(g_p_InputDeviceReportThreadLoop)(baseAddress + 0x5B1577);
+  g_p_StopThread = decltype(g_p_StopThread)(baseAddress + 0x5B157A);
+  g_p_deviceThreads = decltype(g_p_deviceThreads)(baseAddress + 0x5CAD80);
+}
+
+struct PadContext {
+  uintptr_t unk0;
+  int32_t padHandle;
+  uint32_t unk0C;
+  HANDLE hidHandle;
+  uintptr_t threadId;
+  uint16_t vid;
+  uint16_t pid;
+  uint32_t devInterface;
+  uint8_t unk28[0x10A];
+  uint8_t param_132[0x82];
+  uint8_t param_1b4[1];
+};
+
+void libpad_deviceThreadHook(PadContext *padContext) {
+  HANDLE hThread = GetCurrentThread();
+  SetThreadPriority(hThread, 0xf);
+
+  uintptr_t threadId = padContext->threadId;
+  HANDLE hidHandle = padContext->hidHandle;
+  int32_t padHandle = padContext->padHandle;
+  uint16_t vid = padContext->vid;
+  uint16_t pid = padContext->pid;
+  uint32_t devInterface = padContext->devInterface;
+
+  bool isLeft = vid == 0x054C && pid == 0x0E45;
+
+  Util::DriverLog("[Device Thread] Entry for handle={}, padHandle={}, vid={:#x}, pid={:#x}, devInterface={:#x}", hidHandle, padHandle, vid, pid, devInterface);
+
+  PHIDP_PREPARSED_DATA preparsedData = nullptr;
+  if (!HidD_GetPreparsedData(hidHandle, &preparsedData)) {
+    Util::DriverLog("[Device Thread] HidD_GetPreparsedData failed! LastError={:#x}", GetLastError());
+    HidD_FreePreparsedData(preparsedData);
+
+    g_fn_libpadFreeHidDevice(padContext);
+    g_fn_freeThreadHandle(threadId);
+
+    _endthread();
+    return;
+  }
+
+  HIDP_CAPS caps = {};
+  if (HidP_GetCaps(preparsedData, &caps) != HIDP_STATUS_SUCCESS) {
+    Util::DriverLog("[Device Thread] HidP_GetCaps failed!");
+    HidD_FreePreparsedData(preparsedData);
+
+    g_fn_libpadFreeHidDevice(padContext);
+    g_fn_freeThreadHandle(threadId);
+
+    _endthread();
+    return;
+  }
+
+  USHORT numValueCaps = caps.NumberInputValueCaps;
+  std::vector<HIDP_VALUE_CAPS> valueCaps(numValueCaps);
+
+  if (HidP_GetValueCaps(HidP_Input, valueCaps.data(), &numValueCaps, preparsedData) != HIDP_STATUS_SUCCESS) {
+    Util::DriverLog("[Device Thread] HidP_GetValueCaps failed!");
+    HidD_FreePreparsedData(preparsedData);
+
+    g_fn_libpadFreeHidDevice(padContext);
+    g_fn_freeThreadHandle(threadId);
+
+    _endthread();
+    return;
+  }
+
+  size_t inputReportByteLength = caps.InputReportByteLength;
+  size_t featureReportByteLength = caps.FeatureReportByteLength;
+
+  int checkSizeRet = g_fn_checkReportSize(padContext, inputReportByteLength, static_cast<uint32_t>(featureReportByteLength));
+  if (checkSizeRet != 0) {
+    Util::DriverLog("[Device Thread] checkReportSize failed with code={}", checkSizeRet);
+    HidD_FreePreparsedData(preparsedData);
+
+    g_fn_libpadFreeHidDevice(padContext);
+    g_fn_freeThreadHandle(threadId);
+
+    _endthread();
+    return;
+  }
+
+  std::vector<uint8_t> featureReportBuf(featureReportByteLength, 0);
+  int supportedFeature = g_fn_checkSupportedFeatureReport(padContext, valueCaps.data(), numValueCaps);
+
+  uint8_t isBt = (inputReportByteLength == 0x4e) ? 1 : 0;
+  size_t readBufSize = isBt ? 32 * 78 : 32 * 64;
+
+  std::vector<char> inputReadBuf(readBufSize, 0);
+
+  int fwRet = g_fn_getFirmwareInfo(padContext, featureReportBuf.data(), featureReportByteLength, isBt);
+  Util::DriverLog("[Device Thread] getFirmwareInfo returned {}", fwRet);
+
+  bool isSenseDev = g_fn_isSense(vid, pid) != 0;
+  Util::DriverLog("[Device Thread] isSenseDev={}, isBt={}, readBufSize={}", isSenseDev, isBt, readBufSize);
+
+  if (isSenseDev) {
+    uint8_t motionCalibData[0x80] = {0};
+    memset(featureReportBuf.data(), 0, featureReportByteLength);
+    int calibChunk = 0;
+
+    do {
+      featureReportBuf[0] = 5;
+      if (!HidD_GetFeature(hidHandle, featureReportBuf.data(), 0x40)) {
+        Util::DriverLog("[Device Thread] HidD_GetFeature(5) failed at chunk {}, LastError={:#x}", calibChunk, GetLastError());
+        break;
+      }
+
+      int32_t chunkIndex = static_cast<int32_t>(featureReportBuf[1]) & 0x7f;
+      g_fn_parseCalibration(motionCalibData, featureReportBuf.data(), chunkIndex);
+
+      calibChunk++;
+    } while (static_cast<int8_t>(featureReportBuf[1]) >= 0);
+
+    Util::DriverLog("[Device Thread] Calling libpadCreateDeviceSense...");
+    int createRet = g_fn_libpadCreateDeviceSense(padHandle, vid, pid, devInterface, padContext->param_132, padContext->param_1b4, isBt, motionCalibData, 1);
+    Util::DriverLog("[Device Thread] libpadCreateDeviceSense returned {:#x}", createRet);
+    if (createRet >= 0) {
+      SenseController &senseController = SenseController::GetControllerByIsLeft(isLeft);
+      senseController.SetHandle(isBt ? hidHandle : NULL, padHandle);
+
+      int isInit = g_fn_libpadIsInitialized();
+      uint8_t loopFlag = *g_p_InputDeviceReportThreadLoop;
+      Util::DriverLog("[Device Thread] Entering polling loop: isInit={}, loopFlag={}", isInit, loopFlag);
+
+      OVERLAPPED readOverlapped = {};
+      readOverlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+      while (g_fn_libpadIsInitialized() != 0 && *g_p_InputDeviceReportThreadLoop != '\0') {
+        ResetEvent(readOverlapped.hEvent);
+        DWORD bytesRead = 0;
+        BOOL readOk = ReadFile(hidHandle, inputReadBuf.data(), static_cast<DWORD>(readBufSize), &bytesRead, &readOverlapped);
+        if (!readOk) {
+          DWORD err = GetLastError();
+          if (err == ERROR_IO_PENDING) {
+            DWORD waitRes = WaitForSingleObject(readOverlapped.hEvent, 1000);
+            if (waitRes == WAIT_OBJECT_0) {
+              if (GetOverlappedResult(hidHandle, &readOverlapped, &bytesRead, FALSE)) {
+                readOk = TRUE;
+              }
+            } else {
+              CancelIo(hidHandle);
+              continue;
+            }
+          } else {
+            Util::DriverLog("[Device Thread] ReadFile failed! LastError={:#x}", err);
+            break;
+          }
+        }
+
+        if (bytesRead > 0x3f) {
+          uint32_t reportCount = 0;
+          if (isBt == 0) {
+            if ((bytesRead & 0x3f) == 0) {
+              reportCount = bytesRead >> 6;
+            }
+          } else {
+            if ((bytesRead % 0x4e) == 0) {
+              reportCount = bytesRead / 0x4e;
+            }
+          }
+
+          uint64_t nowMicroseconds = GetHostTimestamp();
+          if (reportCount != 0) {
+            for (uint32_t pktIdx = 1; pktIdx <= reportCount; pktIdx++) {
+              size_t reportStride = isBt ? 0x4e : 0x40;
+              char *pSingleReport = inputReadBuf.data() + ((pktIdx - 1) * reportStride);
+
+              if (isBt != 0) {
+                if (g_fn_hasCrcErrorOnBtHid(0xa1, pSingleReport, static_cast<uint32_t>(reportStride)) != '\0') {
+                  continue;
+                }
+              }
+
+              ProcessedControllerState controllerState = {};
+
+              g_fn_parseSenseInputReport(padContext, pSingleReport, static_cast<uint32_t>(reportStride), isBt, &controllerState);
+
+              uint64_t currentHostTime = GetHostTimestamp();
+
+              SenseController &senseController = SenseController::GetControllerByIsLeft(isLeft);
+              uint32_t devTimeMicros = controllerState.deviceTimestamp / k_unSenseUnitsPerMicrosecond;
+              int32_t clockOffset = GetWraparoundDifference(devTimeMicros, static_cast<uint32_t>(currentHostTime));
+              senseController.AddTimestampOffsetSample(static_cast<double>(clockOffset));
+
+              uint32_t hostTime =
+                  (static_cast<uint32_t>(devTimeMicros) - static_cast<uint32_t>(senseController.GetTimestampOffset()) + k_unDeviceTimestampModulus) %
+                  k_unDeviceTimestampModulus;
+              int32_t difference = GetWraparoundDifference(hostTime, static_cast<uint32_t>(currentHostTime));
+              controllerState.hostReceiveTime = currentHostTime + difference;
+
+              g_fn_libpadAppendReceiveDataSense(padHandle, &controllerState, isBt);
+            }
+          }
+
+          if (*g_p_StopThread == '\0') {
+            g_fn_libpadResendDeviceSettings(padHandle);
+          }
+        }
+      }
+
+      if (readOverlapped.hEvent) {
+        CloseHandle(readOverlapped.hEvent);
+      }
+    }
+  }
+
+  SenseController &senseController = SenseController::GetControllerByIsLeft(isLeft);
+  senseController.SetHandle(NULL, -1);
+
+  HidD_FreePreparsedData(preparsedData);
+  if (isBt) {
+    g_fn_libpadDisconnect(padContext, 0);
+  }
+  g_fn_libpadFreeDevice(padHandle);
+  g_fn_libpadFreeHidDevice(padContext);
+  g_fn_freeThreadHandle(threadId);
+
+  _endthread();
+}
+
 void LibpadHooks::InstallHooks() {
   static HmdDriverLoader *pHmdDriverLoader = HmdDriverLoader::Instance();
+  uintptr_t baseAddress = pHmdDriverLoader->GetBaseAddress();
 
   if (VRSettings::GetBool(STEAMVR_SETTINGS_USE_TOOLKIT_SYNC, SETTING_USE_TOOLKIT_SYNC_DEFAULT_VALUE)) {
     Util::DriverLog("Using custom controller/LED sync...");
 
-    packetRecievedReturnAddress = pHmdDriverLoader->GetBaseAddress() + 0x1c75a1;
+    ResolveLibpadSymbols(baseAddress);
+
+    // libpad function for void libpad_deviceMain(void* padContext) @ 0x1CE8E0
+    HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x1CE8E0), reinterpret_cast<void *>(libpad_deviceThreadHook));
 
     // libpad function for uint32_t libpad_hostToDevice(LibpadTimeSync* timeSync, uint32_t host, uint32_t* outDevice) @ 0x1C09E0
     HookLib::InstallHook(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x1C09E0), reinterpret_cast<void *>(libpad_hostToDeviceHook));
@@ -685,14 +902,6 @@ void LibpadHooks::InstallHooks() {
     HookLib::InstallHook(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x161520), reinterpret_cast<void *>(logDeviceTrackingStateHook),
                          reinterpret_cast<void **>(&logDeviceTrackingState));
   }
-
-  // libpad function for int32_t CreateHidDevice(HidDeviceDescriptor* device, wchar_t name, int32_t deviceType) @ 0x1CE210
-  HookLib::InstallHook(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x1CE210), reinterpret_cast<void *>(libpad_CreateHidDeviceHook),
-                       reinterpret_cast<void **>(&libpad_CreateHidDevice));
-
-  // libpad function for void libpad_Disconnect(int32_t device) @ 0x1C7E90
-  HookLib::InstallHook(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x1C7E90), reinterpret_cast<void *>(libpad_DisconnectHook),
-                       reinterpret_cast<void **>(&libpad_Disconnect));
 
   if (VRSettings::GetBool(STEAMVR_SETTINGS_USE_ENHANCED_HAPTICS, SETTING_USE_TOOLKIT_SYNC_DEFAULT_VALUE)) {
     // libpad function for int32_t libpad_SendOutputReport(int32_t handle, uchar * buffer, uint16_t size) @ 0x1CBA20
