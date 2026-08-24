@@ -57,7 +57,15 @@ vr::EVRInitError DeviceProviderProxy::Init(vr::IVRDriverContext *pDriverContext)
   static DriverContextProxy *pDriverContextProxy = DriverContextProxy::Instance();
   pDriverContextProxy->SetDriverContext(pDriverContext);
 
-  return m_pDeviceProvider->Init(pDriverContextProxy);
+  vr::EVRInitError error = m_pDeviceProvider->Init(pDriverContextProxy);
+
+  if (error != vr::EVRInitError::VRInitError_None) {
+    // We need to clean up too if driver init failed.
+    CommandThread::Stop();
+    CaesarUsbThread::Stop();
+  }
+
+  return error;
 }
 
 void DeviceProviderProxy::Cleanup() {
