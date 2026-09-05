@@ -10,6 +10,7 @@
 #include "driver_hooks/libpad_hooks.h"
 #include "driver_hooks/sense_device_hooks.h"
 #include "driver_hooks/usb_thread_hooks.h"
+#include "driver_hooks/vr_dialog_manager_hooks.h"
 #include "driver_interface/share_manager.h"
 #include "hmd_driver_loader.h"
 #include "hook_lib.h"
@@ -116,14 +117,6 @@ void DeviceProviderProxy::InitOnce() {
 void DeviceProviderProxy::InitPatches() {
   static HmdDriverLoader *pHmdDriverLoader = HmdDriverLoader::Instance();
 
-  // Remove signature checks.
-  INSTALL_STUB_RET0(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x134FF0)); // VrDialogManager::VerifyLibrary
-
-  // Remove dashboard, dialog, and desktop app process launch.
-  INSTALL_STUB(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x12F830)); // VrDialogManager::CreateDashboardProcess
-  INSTALL_STUB(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x130020)); // VrDialogManager::CreateDialogProcess
-  INSTALL_STUB(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x131D90)); // VrDialogManager::CreateDesktopAppProcess
-
   // Remove app manifest check for update paused.
   INSTALL_STUB(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x12E8B0)); // CheckAppManifest (seems to be some static helper)
 
@@ -135,6 +128,7 @@ void DeviceProviderProxy::InitPatches() {
   SenseDeviceHooks::InstallHooks();
   ShareManager::InstallHooks();
   UsbThreadHooks::InstallHooks();
+  VrDialogManagerHooks::InstallHooks();
 }
 
 void DeviceProviderProxy::InitSystems() {

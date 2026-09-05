@@ -11,6 +11,8 @@ add_library(psvr2_openvr_driver_ex SHARED
   driver_hooks/sense_device_hooks.cpp
   driver_hooks/usb_thread_hooks.h
   driver_hooks/usb_thread_hooks.cpp
+  driver_hooks/vr_dialog_manager_hooks.h
+  driver_hooks/vr_dialog_manager_hooks.cpp
 
   driver_interface/aston_context.h
   driver_interface/aston_manager.h
