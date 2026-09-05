@@ -124,6 +124,9 @@ void DeviceProviderProxy::InitPatches() {
   INSTALL_STUB(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x130020)); // VrDialogManager::CreateDialogProcess
   INSTALL_STUB(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x131D90)); // VrDialogManager::CreateDesktopAppProcess
 
+  // Remove app manifest check for update paused.
+  INSTALL_STUB(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x12E8B0)); // CheckAppManifest (seems to be some static helper)
+
   AstonManagerHooks::InstallHooks();
   CaesarManagerHooks::InstallHooks();
   CaesarUsbThread::InstallHooks();
