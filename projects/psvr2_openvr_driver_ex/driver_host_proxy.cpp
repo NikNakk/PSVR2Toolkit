@@ -26,6 +26,15 @@ public:
     return trace;
   }
 
+  void WriteProxyInitialised() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_events.is_open()) {
+      return;
+    }
+    m_events << NowNs() << ",proxy_initialised,0,driver_host_attached\n";
+    m_events.flush();
+  }
+
   void WritePose(uint32_t deviceIndex, uint32_t poseStructSize, const vr::DriverPose_t &pose) {
     std::lock_guard<std::mutex> lock(m_mutex);
     if (!m_pose.is_open()) {
@@ -193,7 +202,10 @@ DriverHostProxy *DriverHostProxy::Instance() {
   return m_pInstance;
 }
 
-void DriverHostProxy::SetDriverHost(vr::IVRServerDriverHost *pDriverHost) { m_pDriverHost = pDriverHost; }
+void DriverHostProxy::SetDriverHost(vr::IVRServerDriverHost *pDriverHost) {
+  m_pDriverHost = pDriverHost;
+  DiagnosticTrace::Instance().WriteProxyInitialised();
+}
 
 void DriverHostProxy::AddEventHandler(void (*pfnEventHandler)(vr::VREvent_t *)) { m_pfnEventHandlers.push_back(pfnEventHandler); }
 
