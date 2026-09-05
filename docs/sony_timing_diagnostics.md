@@ -51,3 +51,5 @@ The first quantities to compare with Monado are pose callback cadence, `pose_tim
 ## Performance impact
 
 Pose and vsync rows are buffered and flushed periodically rather than flushing every callback, to minimise disturbance to the timing being measured. Device and property events are flushed immediately because they are rare.
+
+This branch is intended as a short-lived diagnostic aid rather than a permanent feature.
