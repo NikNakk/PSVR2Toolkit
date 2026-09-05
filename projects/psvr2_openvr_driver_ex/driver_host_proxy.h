@@ -44,6 +44,7 @@ public:
     case DeviceType::HMD:
       hmdContainer = propertyContainer;
       hmdIndex = nDevice;
+      LogHmdTimingProperties();
       break;
     case DeviceType::SenseControllerLeft:
       leftControllerContainer = propertyContainer;
@@ -82,6 +83,7 @@ private:
 
   // Used internally for controller pose correction.
   vr::DriverPose_t GetPose(DeviceType type, const vr::DriverPose_t &originalPose);
+  void LogHmdTimingProperties();
 
   vr::PropertyContainerHandle_t hmdContainer = vr::k_ulInvalidPropertyContainer;
   vr::PropertyContainerHandle_t leftControllerContainer = vr::k_ulInvalidPropertyContainer;
