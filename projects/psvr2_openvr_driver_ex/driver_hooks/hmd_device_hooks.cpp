@@ -26,6 +26,30 @@ vr::EVRInitError sie__psvr2__HmdDevice__ActivateHook(void *thisptr, uint32_t unO
 
   DriverHostProxy::Instance()->SetDevice(DeviceType::HMD, ulPropertyContainer, unObjectId);
 
+  if (result == vr::VRInitError_None &&
+      VRSettings::GetBool(STEAMVR_SETTINGS_FORCE_HMD_PROXIMITY, SETTING_FORCE_HMD_PROXIMITY_DEFAULT_VALUE)) {
+    vr::VRProperties()->SetBoolProperty(ulPropertyContainer, vr::Prop_ContainsProximitySensor_Bool, true);
+
+    static vr::VRInputComponentHandle_t proximityHandle = vr::k_ulInvalidInputComponentHandle;
+    if (proximityHandle == vr::k_ulInvalidInputComponentHandle) {
+      vr::IVRDriverInput *driverInput = vr::VRDriverInput();
+      if (!driverInput) {
+        Util::DriverLog("[HMD Proximity] VRDriverInput is unavailable; could not create /proximity.");
+      } else {
+        const auto createResult = driverInput->CreateBooleanComponent(ulPropertyContainer, "/proximity", &proximityHandle);
+        Util::DriverLog("[HMD Proximity] CreateBooleanComponent('/proximity') result={} handle={} container={}.",
+                        static_cast<int>(createResult), static_cast<uint64_t>(proximityHandle),
+                        static_cast<uint64_t>(ulPropertyContainer));
+
+        if (createResult == vr::VRInputError_None && proximityHandle != vr::k_ulInvalidInputComponentHandle) {
+          const auto updateResult = driverInput->UpdateBooleanComponent(proximityHandle, true, 0.0);
+          Util::DriverLog("[HMD Proximity] Forced Sony HMD worn directly; UpdateBooleanComponent result={}.",
+                          static_cast<int>(updateResult));
+        }
+      }
+    }
+  }
+
   // Sony driver only defines the standard hidden area mesh.
   // OpenVR and OpenXR applications can ask for other types
   // and may end up with broken rendering in some cases
