@@ -177,7 +177,7 @@ void DisplayRedirect::Present(const vr::PresentInfo_t *pPresentInfo, uint32_t un
   // virtual target. If we later consume the pixels, access must obey the keyed
   // mutex synchronization rules documented by Valve.
   if (shouldLog) {
-    const auto handleValue = reinterpret_cast<uintptr_t>(pPresentInfo->backbufferTextureHandle);
+    const uint64_t handleValue = static_cast<uint64_t>(pPresentInfo->backbufferTextureHandle);
     Util::DriverLog(
         "[DisplayRedirect] Present #{} frame={} handle=0x{:x} vsync={} compositorVsyncTime={:.6f}", presentCount,
         pPresentInfo->nFrameId, handleValue, static_cast<int>(pPresentInfo->vsync), pPresentInfo->flVSyncTimeInSeconds);
