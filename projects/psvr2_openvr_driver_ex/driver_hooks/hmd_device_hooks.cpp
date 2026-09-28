@@ -196,6 +196,11 @@ vr::EVRInitError sie__psvr2__HmdDevice__ActivateHook(void *thisptr, uint32_t unO
 
     int32_t format = vr::CVS_FORMAT_NV12;
     vr::WritePathProperty(pVRPaths, pHmdDeviceCamera->blockQueueHandle, "/format", format);
+
+    if (VRSettings::GetBool(STEAMVR_SETTINGS_FORCE_CAMERA_ON_FOR_SENSE_TRACE, SETTING_FORCE_CAMERA_ON_FOR_SENSE_TRACE_DEFAULT_VALUE)) {
+      Util::DriverLog("Keeping PSVR2 camera active for experimental Sense LED tracing...");
+      pHmdDeviceCamera->SetUserBit(CameraUser_ExperimentalSenseTrace, true);
+    }
   }
 
   // Tell SteamVR our dashboard scale.
@@ -216,7 +221,15 @@ vr::EVRInitError sie__psvr2__HmdDevice__ActivateHook(void *thisptr, uint32_t unO
 }
 
 void (*sie__psvr2__HmdDevice__Deactivate)(void *) = nullptr;
-void sie__psvr2__HmdDevice__DeactivateHook(void *thisptr) { sie__psvr2__HmdDevice__Deactivate(thisptr); }
+void sie__psvr2__HmdDevice__DeactivateHook(void *thisptr) {
+  if (::g_pHmdDeviceCamera &&
+      VRSettings::GetBool(STEAMVR_SETTINGS_FORCE_CAMERA_ON_FOR_SENSE_TRACE, SETTING_FORCE_CAMERA_ON_FOR_SENSE_TRACE_DEFAULT_VALUE)) {
+    Util::DriverLog("Releasing experimental Sense LED camera hold...");
+    ::g_pHmdDeviceCamera->SetUserBit(CameraUser_ExperimentalSenseTrace, false);
+  }
+
+  sie__psvr2__HmdDevice__Deactivate(thisptr);
+}
 
 void *(*sie__psvr2__HmdDevice__GetComponent)(void *, char *) = nullptr;
 void *sie__psvr2__HmdDevice__GetComponentHook(void *thisptr, char *pchComponentNameAndVersion) {
