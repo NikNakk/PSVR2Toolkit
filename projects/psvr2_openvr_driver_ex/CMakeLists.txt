@@ -28,8 +28,6 @@ add_library(psvr2_openvr_driver_ex SHARED
   display_redirect.h
   display_redirect.cpp
   driver_context_proxy.cpp
-  driver_input_proxy.h
-  driver_input_proxy.cpp
   driver_host_proxy.cpp
   hmd_driver_factory.cpp
   hmd_driver_loader.cpp
