@@ -11,6 +11,7 @@
 #include <openvr_driver.h>
 #include <filesystem>
 #include <fstream>
+#include <chrono>
 
 namespace psvr2_toolkit {
 struct image_data {
@@ -145,14 +146,27 @@ int CaesarUsbThreadGenData__handleDataHook(void *thisptr, char *buffer, uint32_t
 
 int (*CaesarUsbThreadImage__poll)(void *thisptr) = nullptr;
 int CaesarUsbThreadImage__pollHook(void *thisptr) {
+  static uint64_t pollCount = 0;
+  static uint64_t successCount = 0;
+  static uint64_t viCount = 0;
+  static uint64_t gazeCount = 0;
+  static uint64_t trackingImageCount = 0;
+  static uint64_t otherTypeCount = 0;
+  static auto lastTrace = std::chrono::steady_clock::now();
+
+  ++pollCount;
   int result = CaesarUsbThreadImage__poll(thisptr);
 
   if (result == 0) {
+    ++successCount;
     CaesarUsbThreadImage *a1 = (CaesarUsbThreadImage *)thisptr;
     if (a1->image_data.magic[0] == 'V' && a1->image_data.magic[1] == 'I') {
+      ++viCount;
       if (a1->image_data.image_type == 6) {
+        ++gazeCount;
         CustomShareManager::getSingleton()->setGazeImage((unsigned char *)&a1->image_data);
       } else if (a1->image_data.image_type == 11) {
+        ++trackingImageCount;
         static HmdDeviceCamera *pHmdDeviceCamera = HmdDeviceCamera::Instance();
 
         int64_t hmdToHostOffset;
@@ -168,8 +182,23 @@ int CaesarUsbThreadImage__pollHook(void *thisptr) {
         uint64_t ticks = static_cast<uint64_t>(timeOffset * static_cast<double>(frequency.QuadPart));
 
         pHmdDeviceCamera->UploadBC4(ticks, a1->image_data.data);
+      } else {
+        ++otherTypeCount;
       }
     }
+  }
+
+  auto now = std::chrono::steady_clock::now();
+  if (now - lastTrace >= std::chrono::seconds(1)) {
+    Util::DriverLog("[Camera Trace] image poll: polls={} ok={} VI={} gaze6={} tracking11={} other={} lastResult={}",
+                    pollCount, successCount, viCount, gazeCount, trackingImageCount, otherTypeCount, result);
+    pollCount = 0;
+    successCount = 0;
+    viCount = 0;
+    gazeCount = 0;
+    trackingImageCount = 0;
+    otherTypeCount = 0;
+    lastTrace = now;
   }
 
   return result;
