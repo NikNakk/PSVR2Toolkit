@@ -48,6 +48,8 @@ private:
   uint64_t m_adapterLuid = 0;
   uint64_t m_vsyncCounter = 0;
   uint64_t m_presentCount = 0;
+  uint64_t m_waitForPresentCount = 0;
+  uint64_t m_vsyncQueryCount = 0;
   uint64_t m_lastLoggedPresent = 0;
   bool m_registered = false;
   bool m_active = false;
