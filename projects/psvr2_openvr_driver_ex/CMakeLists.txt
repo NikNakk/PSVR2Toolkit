@@ -25,6 +25,8 @@ add_library(psvr2_openvr_driver_ex SHARED
   caesar_usb_thread.cpp
   command_thread.cpp
   device_provider_proxy.cpp
+  display_redirect.h
+  display_redirect.cpp
   driver_context_proxy.cpp
   driver_host_proxy.cpp
   hmd_driver_factory.cpp
@@ -45,7 +47,7 @@ target_link_libraries(psvr2_openvr_driver_ex PRIVATE openvr-headers)
 target_link_libraries(psvr2_openvr_driver_ex PRIVATE libusb)
 
 # DirectX 11 for GPU compute based BC4 to NV12 conversion
-target_link_libraries(psvr2_openvr_driver_ex PRIVATE d3d11)
+target_link_libraries(psvr2_openvr_driver_ex PRIVATE d3d11 dxgi)
 target_link_libraries(psvr2_openvr_driver_ex PRIVATE d3dcompiler)
 
 set_target_properties(psvr2_openvr_driver_ex PROPERTIES
