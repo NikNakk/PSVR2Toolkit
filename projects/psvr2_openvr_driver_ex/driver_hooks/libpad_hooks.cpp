@@ -214,6 +214,109 @@ uint32_t libpad_deviceToHostHook(LibpadTimeSync *timeSync, uint32_t device, void
 }
 
 void (*libpad_SetSyncLedCommand)(LibpadTimeSync *timeSync, LibpadLedSync *ledSync, LedCommand *ledCommand, uint8_t commandSize, bool isLeft) = nullptr;
+
+const char *LedPhaseName(uint8_t phase) {
+  switch (phase) {
+  case LedPhase::INIT:
+    return "INIT";
+  case LedPhase::PRESCAN:
+    return "PRESCAN";
+  case LedPhase::BROAD:
+    return "BROAD";
+  case LedPhase::BG:
+    return "BG";
+  case LedPhase::STABLE:
+    return "STABLE";
+  case LedPhase::LED_ALL_OFF:
+    return "LED_ALL_OFF";
+  case LedPhase::LED_ALL_ON:
+    return "LED_ALL_ON";
+  case LedPhase::DEBUG:
+    return "DEBUG";
+  default:
+    return "UNKNOWN";
+  }
+}
+
+const char *LedCommandTypeName(CommandType type) {
+  switch (type) {
+  case CommandType::SET_SYNC_PHASE:
+    return "SET_SYNC_PHASE";
+  case CommandType::SET_LEDS_IMMEDIATE:
+    return "SET_LEDS_IMMEDIATE";
+  case CommandType::ADJUST_FRAME_CYCLE:
+    return "ADJUST_FRAME_CYCLE";
+  case CommandType::ADJUST_BASE_TIME:
+    return "ADJUST_BASE_TIME";
+  case CommandType::ADJUST_TIME_AND_CYCLE:
+    return "ADJUST_TIME_AND_CYCLE";
+  case CommandType::SYSTEM_CONTROL:
+    return "SYSTEM_CONTROL";
+  default:
+    return "UNKNOWN";
+  }
+}
+
+void LogSonyLedCommand(LibpadLedSync *ledSync, LedCommand *ledCommand, uint8_t commandSize, bool isLeft) {
+  const char controller = isLeft ? 'L' : 'R';
+
+  if (!ledCommand) {
+    Util::DriverLog("[Sony LED][{}] null command, size={}", controller, commandSize);
+    return;
+  }
+
+  switch (ledCommand->type) {
+  case CommandType::SET_SYNC_PHASE: {
+    const auto &sync = ledCommand->payload.syncPhase;
+    if (sync.phase == LedPhase::PRESCAN) {
+      Util::DriverLog(
+          "[Sony LED][{}] {} phase={}({}) period={} frameCycle={} leds=[{:#04x},{:#04x},{:#04x},{:#04x}] size={} currentPhase={}({}) currentPeriod={} currentFrameCycle={}",
+          controller, LedCommandTypeName(ledCommand->type), sync.phase, LedPhaseName(sync.phase), sync.period, sync.frameCycle, sync.leds[0], sync.leds[1],
+          sync.leds[2], sync.leds[3], commandSize, ledSync ? ledSync->phase : 0xff, ledSync ? LedPhaseName(ledSync->phase) : "NULL",
+          ledSync ? ledSync->period : 0xff, ledSync ? ledSync->frameCycle : 0);
+    } else {
+      Util::DriverLog(
+          "[Sony LED][{}] {} phase={}({}) period={} offset={} leds=[{:#04x},{:#04x},{:#04x},{:#04x}] size={} currentPhase={}({}) currentPeriod={} currentFrameCycle={}",
+          controller, LedCommandTypeName(ledCommand->type), sync.phase, LedPhaseName(sync.phase), sync.period, sync.offset, sync.leds[0], sync.leds[1],
+          sync.leds[2], sync.leds[3], commandSize, ledSync ? ledSync->phase : 0xff, ledSync ? LedPhaseName(ledSync->phase) : "NULL",
+          ledSync ? ledSync->period : 0xff, ledSync ? ledSync->frameCycle : 0);
+    }
+    break;
+  }
+  case CommandType::SET_LEDS_IMMEDIATE:
+    Util::DriverLog("[Sony LED][{}] {} leds=[{:#04x},{:#04x},{:#04x},{:#04x}] size={}", controller, LedCommandTypeName(ledCommand->type),
+                    ledCommand->payload.setLeds.leds[0], ledCommand->payload.setLeds.leds[1], ledCommand->payload.setLeds.leds[2],
+                    ledCommand->payload.setLeds.leds[3], commandSize);
+    break;
+  case CommandType::ADJUST_FRAME_CYCLE:
+    Util::DriverLog("[Sony LED][{}] {} adjustmentFactor={} size={}", controller, LedCommandTypeName(ledCommand->type),
+                    ledCommand->payload.adjustCycle.adjustmentFactor, commandSize);
+    break;
+  case CommandType::ADJUST_BASE_TIME:
+    Util::DriverLog("[Sony LED][{}] {} offset={} size={}", controller, LedCommandTypeName(ledCommand->type), ledCommand->payload.adjustTime.offset,
+                    commandSize);
+    break;
+  case CommandType::ADJUST_TIME_AND_CYCLE:
+    Util::DriverLog("[Sony LED][{}] {} adjustmentFactor={} offset={} size={} currentFrameCycle={}", controller, LedCommandTypeName(ledCommand->type),
+                    ledCommand->payload.adjustTimeAndCycle.adjustmentFactor, ledCommand->payload.adjustTimeAndCycle.offset, commandSize,
+                    ledSync ? ledSync->frameCycle : 0);
+    break;
+  case CommandType::SYSTEM_CONTROL:
+    Util::DriverLog("[Sony LED][{}] {} subCommand={} payload={} size={}", controller, LedCommandTypeName(ledCommand->type),
+                    ledCommand->payload.sysControl.subCommand, ledCommand->payload.sysControl.subCommandPayload, commandSize);
+    break;
+  default:
+    Util::DriverLog("[Sony LED][{}] command={}({}) size={}", controller, static_cast<uint8_t>(ledCommand->type), LedCommandTypeName(ledCommand->type),
+                    commandSize);
+    break;
+  }
+}
+
+void libpad_SetSyncLedCommandTraceHook(LibpadTimeSync *timeSync, LibpadLedSync *ledSync, LedCommand *ledCommand, uint8_t commandSize, bool isLeft) {
+  LogSonyLedCommand(ledSync, ledCommand, commandSize, isLeft);
+  libpad_SetSyncLedCommand(timeSync, ledSync, ledCommand, commandSize, isLeft);
+}
+
 void libpad_SetSyncLedCommandHook(LibpadTimeSync *timeSync, LibpadLedSync *ledSync, LedCommand *ledCommand, uint8_t commandSize, bool isLeft) {
   static std::mutex ledCommandMutex;
   std::scoped_lock lock(ledCommandMutex);
@@ -869,7 +972,10 @@ void LibpadHooks::InstallHooks() {
   static HmdDriverLoader *pHmdDriverLoader = HmdDriverLoader::Instance();
   uintptr_t baseAddress = pHmdDriverLoader->GetBaseAddress();
 
-  if (VRSettings::GetBool(STEAMVR_SETTINGS_USE_TOOLKIT_SYNC, SETTING_USE_TOOLKIT_SYNC_DEFAULT_VALUE)) {
+  const bool useToolkitSync = VRSettings::GetBool(STEAMVR_SETTINGS_USE_TOOLKIT_SYNC, SETTING_USE_TOOLKIT_SYNC_DEFAULT_VALUE);
+  const bool traceSonyLedCommands = VRSettings::GetBool(STEAMVR_SETTINGS_TRACE_SONY_LED_COMMANDS, SETTING_TRACE_SONY_LED_COMMANDS_DEFAULT_VALUE);
+
+  if (useToolkitSync) {
     Util::DriverLog("Using custom controller/LED sync...");
 
     ResolveLibpadSymbols(baseAddress);
@@ -901,9 +1007,15 @@ void LibpadHooks::InstallHooks() {
     // currentPose, void* currentMeta) @ 0x161520
     HookLib::InstallHook(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x161520), reinterpret_cast<void *>(logDeviceTrackingStateHook),
                          reinterpret_cast<void **>(&logDeviceTrackingState));
+  } else if (traceSonyLedCommands) {
+    Util::DriverLog("Tracing Sony controller/LED sync commands passively...");
+
+    // Passive trace only: do not alter Sony's command, LED sync state, timing, or return path.
+    HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x1C1880), reinterpret_cast<void *>(libpad_SetSyncLedCommandTraceHook),
+                         reinterpret_cast<void **>(&libpad_SetSyncLedCommand));
   }
 
-  if (VRSettings::GetBool(STEAMVR_SETTINGS_USE_ENHANCED_HAPTICS, SETTING_USE_TOOLKIT_SYNC_DEFAULT_VALUE)) {
+  if (VRSettings::GetBool(STEAMVR_SETTINGS_USE_ENHANCED_HAPTICS, SETTING_USE_ENHANCED_HAPTICS_DEFAULT_VALUE)) {
     // libpad function for int32_t libpad_SendOutputReport(int32_t handle, uchar * buffer, uint16_t size) @ 0x1CBA20
     HookLib::InstallHook(reinterpret_cast<void *>(pHmdDriverLoader->GetBaseAddress() + 0x1CBA20), reinterpret_cast<void *>(libpad_SendOutputReportHook),
                          reinterpret_cast<void **>(&libpad_SendOutputReport));
