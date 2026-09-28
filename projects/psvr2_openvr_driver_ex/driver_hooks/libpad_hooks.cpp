@@ -399,6 +399,8 @@ void (*libpad_SetSyncLedBaseTime)(LibpadTimeSync *timeSync, LibpadLedSync *ledSy
 
 void libpad_SetSyncLedBaseTimeTraceHook(LibpadTimeSync *timeSync, LibpadLedSync *ledSync) {
   static std::atomic<uint64_t> lastLog[2] = {0, 0};
+  static std::atomic<uint64_t> firstEligible[2] = {0, 0};
+  static std::atomic<bool> prescanInjected[2] = {false, false};
 
   const bool isLeft = timeSync && timeSync->isLeft;
   const int controller = isLeft ? 1 : 0;
@@ -411,6 +413,37 @@ void libpad_SetSyncLedBaseTimeTraceHook(LibpadTimeSync *timeSync, LibpadLedSync 
         isLeft ? 'L' : 'R', static_cast<uint8_t>(ledSync->phase), LedPhaseName(ledSync->phase), ledSync->seq, ledSync->period, ledSync->baseTime,
         ledSync->frameCycle, ledSync->last_timestamp, ledSync->unknown0x18 ? 1 : 0, ledSync->camExposure, ledSync->oneSubGridTime,
         ledSync->unknown0x28 ? 1 : 0);
+  }
+
+  // Let Sony establish its native timing object first. If it remains valid but
+  // parked in LED_ALL_OFF for five seconds, issue exactly one native PRESCAN
+  // command through Sony's own libpad implementation, then stop intervening.
+  // This isolates whether the missing piece is merely the state-machine kick.
+  if (ledSync && ledSync->phase == LedPhase::LED_ALL_OFF && ledSync->unknown0x18 && ledSync->unknown0x28 && ledSync->frameCycle > 0 &&
+      !prescanInjected[controller].load()) {
+    uint64_t first = firstEligible[controller].load();
+    if (first == 0) {
+      firstEligible[controller] = now;
+    } else if (now - first >= 5000000) {
+      LedCommand command = {};
+      command.type = CommandType::SET_SYNC_PHASE;
+      command.payload.syncPhase.phase = LedPhase::PRESCAN;
+      command.payload.syncPhase.period = k_prescanPhasePeriod;
+      memset(command.payload.syncPhase.leds, 0xFF, sizeof(command.payload.syncPhase.leds));
+
+      Util::DriverLog(
+          "[Native Prescan Kick][{}] injecting one Sony SET_SYNC_PHASE PRESCAN period={} leds=[0xff,0xff,0xff,0xff] frameCycle={} baseTime={}",
+          isLeft ? 'L' : 'R', k_prescanPhasePeriod, ledSync->frameCycle, ledSync->baseTime);
+
+      libpad_SetSyncLedCommand(timeSync, ledSync, &command,
+                               sizeof(command.type) + sizeof(command.payload.syncPhase) - sizeof(command.payload.syncPhase.frameCycle), isLeft);
+      prescanInjected[controller] = true;
+
+      Util::DriverLog(
+          "[Native Prescan Kick][{}] post-command phase={}({}) seq={} period={} baseTime={} frameCycle={} lastTimestamp={} syncValid={} cameraValid={}",
+          isLeft ? 'L' : 'R', static_cast<uint8_t>(ledSync->phase), LedPhaseName(ledSync->phase), ledSync->seq, ledSync->period, ledSync->baseTime,
+          ledSync->frameCycle, ledSync->last_timestamp, ledSync->unknown0x18 ? 1 : 0, ledSync->unknown0x28 ? 1 : 0);
+    }
   }
 
   libpad_SetSyncLedBaseTime(timeSync, ledSync);
