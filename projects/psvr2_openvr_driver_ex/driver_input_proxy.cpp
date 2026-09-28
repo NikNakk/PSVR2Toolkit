@@ -27,11 +27,10 @@ vr::EVRInputError DriverInputProxy::CreateBooleanComponent(vr::PropertyContainer
                                                            vr::VRInputComponentHandle_t *pHandle) {
   const auto result = m_pDriverInput->CreateBooleanComponent(ulContainer, pchName, pHandle);
 
-  const bool isHmd = DriverHostProxy::Instance()->GetDeviceType(ulContainer) == DeviceType::HMD;
   const bool looksLikeProximity = pchName && std::strstr(pchName, "proximity") != nullptr;
   const bool forceProximity = VRSettings::GetBool(STEAMVR_SETTINGS_FORCE_HMD_PROXIMITY, SETTING_FORCE_HMD_PROXIMITY_DEFAULT_VALUE);
 
-  if (result == vr::VRInputError_None && pHandle && isHmd && looksLikeProximity) {
+  if (result == vr::VRInputError_None && pHandle && looksLikeProximity) {
     m_hmdProximityHandle = *pHandle;
     Util::DriverLog("[HMD Proximity] Detected Sony HMD boolean component '{}' handle={} container={}.", pchName,
                     static_cast<uint64_t>(m_hmdProximityHandle), static_cast<uint64_t>(ulContainer));
