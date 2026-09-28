@@ -13,6 +13,7 @@
 #include "driver_hooks/usb_thread_hooks.h"
 #include "driver_hooks/vr_dialog_manager_hooks.h"
 #include "driver_interface/share_manager.h"
+#include "display_redirect.h"
 #include "hmd_driver_loader.h"
 #include "hook_lib.h"
 #include "trigger_effect_manager.h"
@@ -61,6 +62,15 @@ vr::EVRInitError DeviceProviderProxy::Init(vr::IVRDriverContext *pDriverContext)
 
   vr::EVRInitError error = m_pDeviceProvider->Init(pDriverContextProxy);
 
+  if (error == vr::EVRInitError::VRInitError_None &&
+      VRSettings::GetBool(STEAMVR_SETTINGS_ENABLE_DISPLAY_REDIRECT, SETTING_ENABLE_DISPLAY_REDIRECT_DEFAULT_VALUE)) {
+    if (DisplayRedirect::Instance()->Register()) {
+      Util::DriverLog("[DisplayRedirect] Registration accepted by SteamVR.");
+    } else {
+      Util::DriverLog("[DisplayRedirect] Registration was rejected by SteamVR.");
+    }
+  }
+
   if (error != vr::EVRInitError::VRInitError_None) {
     // We need to clean up too if driver init failed.
     CommandThread::Stop();
@@ -77,6 +87,8 @@ void DeviceProviderProxy::Cleanup() {
 
   CommandThread::Stop();
 
+  DisplayRedirect::Instance()->Shutdown();
+
   m_pDeviceProvider->Cleanup();
 
   // The cleanup call above handles joining all CaesarUsbThread instances.
@@ -86,7 +98,7 @@ void DeviceProviderProxy::Cleanup() {
   VR_CLEANUP_SERVER_DRIVER_CONTEXT();
 }
 
-const char *const *DeviceProviderProxy::GetInterfaceVersions() { return m_pDeviceProvider->GetInterfaceVersions(); }
+const char *const *DeviceProviderProxy::GetInterfaceVersions() { return vr::k_InterfaceVersions; }
 
 void DeviceProviderProxy::RunFrame() { m_pDeviceProvider->RunFrame(); }
 
