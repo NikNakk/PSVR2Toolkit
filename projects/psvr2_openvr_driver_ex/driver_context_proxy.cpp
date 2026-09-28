@@ -1,6 +1,8 @@
 #include "driver_context_proxy.h"
 
 #include "driver_host_proxy.h"
+#include "driver_input_proxy.h"
+#include "util.h"
 
 namespace psvr2_toolkit {
 
@@ -26,6 +28,13 @@ void *DriverContextProxy::GetGenericInterface(const char *pchInterfaceVersion, v
     static DriverHostProxy *pDriverHostProxy = DriverHostProxy::Instance();
     pDriverHostProxy->SetDriverHost(static_cast<vr::IVRServerDriverHost *>(result));
     return pDriverHostProxy;
+  }
+
+  if (strcmp(vr::IVRDriverInput_Version, pchInterfaceVersion) == 0 && result) {
+    static DriverInputProxy *pDriverInputProxy = DriverInputProxy::Instance();
+    pDriverInputProxy->SetDriverInput(static_cast<vr::IVRDriverInput *>(result));
+    Util::DriverLog("[HMD Proximity] IVRDriverInput proxy installed.");
+    return pDriverInputProxy;
   }
 
   return result;
