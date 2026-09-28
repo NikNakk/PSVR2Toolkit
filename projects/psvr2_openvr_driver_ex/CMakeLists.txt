@@ -6,6 +6,8 @@ add_library(psvr2_openvr_driver_ex SHARED
   driver_hooks/caesar_manager_hooks.cpp
   driver_hooks/hmd_device_hooks.h
   driver_hooks/hmd_device_hooks.cpp
+  driver_hooks/hmd_presence_hooks.h
+  driver_hooks/hmd_presence_hooks.cpp
   driver_hooks/libpad_hooks.h
   driver_hooks/libpad_hooks.cpp
   driver_hooks/sense_device_hooks.cpp
