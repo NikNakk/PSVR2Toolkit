@@ -85,6 +85,8 @@ void DisplayRedirect::Shutdown() {
   m_objectId = vr::k_unTrackedDeviceIndexInvalid;
   m_vsyncCounter = 0;
   m_presentCount = 0;
+  m_waitForPresentCount = 0;
+  m_vsyncQueryCount = 0;
   m_lastLoggedPresent = 0;
 }
 
@@ -110,6 +112,8 @@ vr::EVRInitError DisplayRedirect::Activate(uint32_t unObjectId) {
     std::lock_guard<std::mutex> lock(m_timingMutex);
     m_active = true;
     m_presentCount = 0;
+    m_waitForPresentCount = 0;
+    m_vsyncQueryCount = 0;
     m_lastLoggedPresent = 0;
     ResetTimingLocked(std::chrono::steady_clock::now());
   }
@@ -120,7 +124,8 @@ vr::EVRInitError DisplayRedirect::Activate(uint32_t unObjectId) {
 
 void DisplayRedirect::Deactivate() {
   std::lock_guard<std::mutex> lock(m_timingMutex);
-  Util::DriverLog("[DisplayRedirect] Deactivated after {} Present calls.", m_presentCount);
+  Util::DriverLog("[DisplayRedirect] Deactivated after {} Present calls, {} WaitForPresent calls, {} vsync queries.",
+                  m_presentCount, m_waitForPresentCount, m_vsyncQueryCount);
   m_active = false;
   m_objectId = vr::k_unTrackedDeviceIndexInvalid;
 }
@@ -196,6 +201,10 @@ void DisplayRedirect::WaitForPresent() {
     if (!m_active) {
       return;
     }
+    ++m_waitForPresentCount;
+    if (m_waitForPresentCount <= 5 || (m_waitForPresentCount % 90) == 0) {
+      Util::DriverLog("[DisplayRedirect] WaitForPresent #{}", m_waitForPresentCount);
+    }
     target = m_nextVsync;
   }
 
@@ -231,6 +240,11 @@ bool DisplayRedirect::GetTimeSinceLastVsync(float *pfSecondsSinceLastVsync, uint
   std::lock_guard<std::mutex> lock(m_timingMutex);
   if (!m_active) {
     return false;
+  }
+
+  ++m_vsyncQueryCount;
+  if (m_vsyncQueryCount <= 5 || (m_vsyncQueryCount % 90) == 0) {
+    Util::DriverLog("[DisplayRedirect] GetTimeSinceLastVsync #{}", m_vsyncQueryCount);
   }
 
   const auto now = std::chrono::steady_clock::now();
