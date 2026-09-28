@@ -21,7 +21,7 @@ const int32_t frameDataSize = pixelCount * 3 / 2; // NV12 is 1.5 bytes per pixel
 
 namespace psvr2_toolkit {
 
-enum CameraUser : uint8_t { CameraUser_Hmd = 1 << 0, CameraUser_Ipc = 1 << 1, CameraUser_PlayArea = 1 << 2 };
+enum CameraUser : uint8_t { CameraUser_Hmd = 1 << 0, CameraUser_Ipc = 1 << 1, CameraUser_PlayArea = 1 << 2, CameraUser_ExperimentalSenseTrace = 1 << 3 };
 
 struct CameraCalibration {
   float fx = 0.0f;
