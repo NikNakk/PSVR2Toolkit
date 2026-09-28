@@ -396,6 +396,26 @@ void libpad_SetSyncLedCommandHook(LibpadTimeSync *timeSync, LibpadLedSync *ledSy
 }
 
 void (*libpad_SetSyncLedBaseTime)(LibpadTimeSync *timeSync, LibpadLedSync *ledSync) = nullptr;
+
+void libpad_SetSyncLedBaseTimeTraceHook(LibpadTimeSync *timeSync, LibpadLedSync *ledSync) {
+  static std::atomic<uint64_t> lastLog[2] = {0, 0};
+
+  const bool isLeft = timeSync && timeSync->isLeft;
+  const int controller = isLeft ? 1 : 0;
+  const uint64_t now = GetHostTimestamp();
+
+  if (ledSync && now - lastLog[controller].load() >= 1000000) {
+    lastLog[controller] = now;
+    Util::DriverLog(
+        "[Sony LED Base][{}] phase={}({}) seq={} period={} baseTime={} frameCycle={} lastTimestamp={} syncValid={} camExposure={} subGrid={} cameraValid={}",
+        isLeft ? 'L' : 'R', static_cast<uint8_t>(ledSync->phase), LedPhaseName(ledSync->phase), ledSync->seq, ledSync->period, ledSync->baseTime,
+        ledSync->frameCycle, ledSync->last_timestamp, ledSync->unknown0x18 ? 1 : 0, ledSync->camExposure, ledSync->oneSubGridTime,
+        ledSync->unknown0x28 ? 1 : 0);
+  }
+
+  libpad_SetSyncLedBaseTime(timeSync, ledSync);
+}
+
 void libpad_SetSyncLedBaseTimeHook(LibpadTimeSync *timeSync, LibpadLedSync *ledSync) {
   static std::mutex ledSyncMutex;
   std::scoped_lock lock(ledSyncMutex);
@@ -673,6 +693,13 @@ void logDeviceTrackingStateHook(void *session, int32_t deviceType, uint64_t time
   if (controller != -1) {
     SenseController &senseController = SenseController::GetControllerByIsLeft(controller == 0 ? true : false);
     bool isTracking = (*trackingFlag == 9);
+
+    static std::atomic<int> lastTrackingFlag[2] = {-1, -1};
+    const int newFlag = static_cast<unsigned char>(*trackingFlag);
+    const int oldFlag = lastTrackingFlag[controller].exchange(newFlag);
+    if (oldFlag != newFlag) {
+      Util::DriverLog("[Sony Tracking][{}] flag {} -> {} (tracking={})", controller == 0 ? 'L' : 'R', oldFlag, newFlag, isTracking ? 1 : 0);
+    }
 
     senseController.SetIsTracking(isTracking, GetHostTimestamp());
   }
@@ -1010,9 +1037,15 @@ void LibpadHooks::InstallHooks() {
   } else if (traceSonyLedCommands) {
     Util::DriverLog("Tracing Sony controller/LED sync commands passively...");
 
-    // Passive trace only: do not alter Sony's command, LED sync state, timing, or return path.
+    // Passive traces only: do not alter Sony's command, LED sync state, timing, tracking state, or return path.
     HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x1C1880), reinterpret_cast<void *>(libpad_SetSyncLedCommandTraceHook),
                          reinterpret_cast<void **>(&libpad_SetSyncLedCommand));
+
+    HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x1C27D0), reinterpret_cast<void *>(libpad_SetSyncLedBaseTimeTraceHook),
+                         reinterpret_cast<void **>(&libpad_SetSyncLedBaseTime));
+
+    HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x161520), reinterpret_cast<void *>(logDeviceTrackingStateHook),
+                         reinterpret_cast<void **>(&logDeviceTrackingState));
   }
 
   if (VRSettings::GetBool(STEAMVR_SETTINGS_USE_ENHANCED_HAPTICS, SETTING_USE_ENHANCED_HAPTICS_DEFAULT_VALUE)) {
