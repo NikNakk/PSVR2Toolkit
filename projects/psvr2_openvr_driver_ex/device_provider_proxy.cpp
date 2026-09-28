@@ -7,6 +7,7 @@
 #include "driver_hooks/aston_manager_hooks.h"
 #include "driver_hooks/caesar_manager_hooks.h"
 #include "driver_hooks/hmd_device_hooks.h"
+#include "driver_hooks/hmd_presence_hooks.h"
 #include "driver_hooks/libpad_hooks.h"
 #include "driver_hooks/sense_device_hooks.h"
 #include "driver_hooks/usb_thread_hooks.h"
@@ -124,6 +125,7 @@ void DeviceProviderProxy::InitPatches() {
   CaesarManagerHooks::InstallHooks();
   CaesarUsbThread::InstallHooks();
   HmdDeviceHooks::InstallHooks();
+  HmdPresenceHooks::InstallHooks();
   LibpadHooks::InstallHooks();
   SenseDeviceHooks::InstallHooks();
   ShareManager::InstallHooks();
