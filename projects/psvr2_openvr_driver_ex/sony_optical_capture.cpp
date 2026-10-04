@@ -209,8 +209,11 @@ writer_main(CaptureState *s)
         if (s->frames) {
           s->frames << frameItem.frame.hostTimestampUs << ',' << frameItem.captureIndex << ','
                     << frameItem.eventId << ',' << frameItem.relativeFrame << ','
-                    << frameItem.frame.imageTimestamp << ',' << frameItem.frame.imageType << ','
-                    << frameItem.frame.bytes.size() << ',' << frameItem.filename << "\n";
+                    << frameItem.frame.imageTimestamp << ',' << frameItem.frame.sequenceId << ','
+                    << frameItem.frame.cameraSet << ',' << frameItem.frame.imageWidth << ','
+                    << frameItem.frame.imageHeight << ',' << frameItem.frame.activeWidth << ','
+                    << frameItem.frame.activeHeight << ',' << frameItem.frame.bytes.size() << ','
+                    << frameItem.filename << "\n";
           s->frames.flush();
         }
       }
