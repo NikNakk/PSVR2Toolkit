@@ -185,12 +185,6 @@ void OpticalProcessor__processHook(void *pContext, void *pOpticalData) {
   }
 
   OpticalProcessor__process(pContext, pOpticalData);
-
-  if (controllerIdx < 2 && SonyOpticalCapture::Enabled()) {
-    uint8_t *pControllerData = reinterpret_cast<uint8_t *>(pOpticalData) + (controllerIdx * 0x5A44);
-    SonyOpticalCapture::CaptureOpticalData(controllerIdx, g_opticalFrameIndex[controllerIdx].load(), pControllerData,
-                                           0x5A44);
-  }
 }
 
 uint32_t libpad_hostToDeviceHook(LibpadTimeSync *timeSync, uint32_t host, uint32_t *outDevice) {
@@ -1098,12 +1092,6 @@ void LibpadHooks::InstallHooks() {
 
     HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x161520), reinterpret_cast<void *>(logDeviceTrackingStateHook),
                          reinterpret_cast<void **>(&logDeviceTrackingState));
-
-    if (SonyOpticalCapture::Enabled()) {
-      Util::DriverLog("[Sony Optical Capture] installing passive OpticalProcessor trace hook...");
-      HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x1999F0), reinterpret_cast<void *>(OpticalProcessor__processHook),
-                           reinterpret_cast<void **>(&OpticalProcessor__process));
-    }
   }
 
   if (VRSettings::GetBool(STEAMVR_SETTINGS_USE_ENHANCED_HAPTICS, SETTING_USE_ENHANCED_HAPTICS_DEFAULT_VALUE)) {
