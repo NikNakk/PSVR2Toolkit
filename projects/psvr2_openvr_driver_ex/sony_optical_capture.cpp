@@ -156,7 +156,21 @@ SonyOpticalCapture::NoteLedCommand(bool isLeft,
   CaptureState &s = state();
   const uint64_t id = new_event_id();
   const uint64_t hostUs = GetHostTimestamp();
-  arm_camera_frames(id);
+
+  // Command 6 is a ~1 Hz Sony maintenance command and would otherwise consume the bounded camera-frame budget
+  // during long PRESCAN intervals. Keep every command in events.csv, but save images only around state/timing
+  // mutations that can change what the cameras see.
+  const auto *rawCommand = static_cast<const uint8_t *>(command);
+  const uint8_t commandType = commandSize > 0 && rawCommand ? rawCommand[0] : 0xff;
+  const bool visuallyInteresting =
+      commandType == 1 || // SET_SYNC_PHASE
+      commandType == 2 || // SET_LEDS_IMMEDIATE
+      commandType == 3 || // ADJUST_FRAME_CYCLE
+      commandType == 4 || // ADJUST_BASE_TIME
+      commandType == 5;   // ADJUST_TIME_AND_CYCLE
+  if (visuallyInteresting) {
+    arm_camera_frames(id);
+  }
 
   std::lock_guard<std::mutex> lock(s.mutex);
   if (s.events) {
