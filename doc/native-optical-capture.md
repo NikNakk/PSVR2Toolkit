@@ -13,8 +13,9 @@ upstream-oriented implementation.
 
 Feature: Sense optical LED identification / scheduling
 Source of knowledge: Sony Windows driver used as a behavioural oracle
-Method: passive LED/state tracing for event timestamps, raw USB type-11 camera capture, and simultaneous Bluetooth ETW
-capture of the actual A2/31 controller output
+Method: passive LED/state tracing for event timestamps, raw USB camera/LED-detector capture, simultaneous Bluetooth ETW
+capture of the actual A2/31 controller output, plus Sony's permitted 17-LED tracking outputs recorded as semantic
+ground-truth labels
 Observed protocol/behaviour: phase/period/mask/timing changes and their directly visible effect in camera images
 Implementation provenance: any Monado implementation is derived independently from documented protocol facts and test
 vectors; no Sony source/decompiled implementation is copied
@@ -60,6 +61,27 @@ Records paired QPC microseconds and Unix-wall-clock microseconds about once per 
 are wall-clock based, while Toolkit's event/camera/pose timestamps use QPC. Fitting these pairs gives a direct affine
 mapping between the two clocks, so A2/31 Bluetooth changes can be aligned to camera/IF8/pose data without relying on
 vrserver log formatting.
+
+### sony_led_ground_truth.csv
+
+Research-only semantic labels derived from Sony's internal optical-processing **outputs**, which the revised
+`AGENTS.md` explicitly permits as behavioural ground truth.
+
+One row is written per processed controller/camera frame with:
+
+- controller side;
+- optical frame index;
+- camera index;
+- 17-bit `assigned_mask`;
+- 17-bit `matched_mask`;
+- Sony's blob index for each physical LED ID 0..16.
+
+The private Sony working-memory layout and DLL offsets remain confined to Toolkit instrumentation. No raw optical
+working-set dump is persisted, and Monado should consume only documented output facts / labelled observations.
+
+This dataset is particularly useful for validating an independently written matcher: for a given raw camera frame,
+we can ask whether our detector/matcher assigns the same physical LED IDs Sony reported, without borrowing Sony's
+detection or pose-solving algorithm.
 
 ### poses.csv
 
