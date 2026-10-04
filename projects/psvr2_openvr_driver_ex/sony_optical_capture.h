@@ -1,0 +1,23 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+namespace psvr2_toolkit {
+
+class SonyOpticalCapture {
+public:
+  static bool Enabled();
+
+  static void NoteLedCommand(bool isLeft, const void *command, size_t commandSize, uint8_t currentPhase,
+                             uint8_t currentSequence, uint8_t currentPeriod, int32_t baseTime,
+                             uint32_t frameCycle);
+  static void NoteTracking(bool isLeft, int oldFlag, int newFlag);
+
+  static void CaptureTrackingImage(const void *imageData, size_t imageSize, uint32_t imageTimestamp,
+                                   uint16_t imageType);
+  static void CaptureOpticalData(uint32_t controllerIdx, uint64_t frameIndex, const void *controllerData,
+                                 size_t controllerDataSize);
+};
+
+} // namespace psvr2_toolkit
