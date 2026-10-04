@@ -115,6 +115,9 @@ struct CaptureState {
 
   uint32_t cameraFramesQueued = 0;
   uint64_t cameraFrameOrdinal = 0;
+  bool publishedTrackingStateKnown[3] = {false, false, false};
+  bool publishedTrackingValid[3] = {false, false, false};
+  int publishedTrackingResult[3] = {0, 0, 0};
   uint64_t ledDetectorBytesQueued = 0;
   uint64_t ledDetectorPacketsDropped = 0;
 
@@ -251,7 +254,7 @@ initialize_if_needed()
                          std::ios::out | std::ios::binary | std::ios::trunc);
 
       if (s.events) {
-        s.events << "host_us,event_id,kind,side,current_phase,current_seq,current_period,base_time,frame_cycle,payload_hex\n";
+        s.events << "host_us,event_id,kind,side,payload_hex\n";
       }
       if (s.frames) {
         s.frames << "host_us,capture_index,event_id,relative_frame,vts_us,sequence_id,camera_set,"
@@ -337,11 +340,6 @@ record_event(bool isLeft,
              const char *kind,
              const void *payload,
              size_t payloadSize,
-             uint8_t currentPhase,
-             uint8_t currentSequence,
-             uint8_t currentPeriod,
-             int32_t baseTime,
-             uint32_t frameCycle,
              bool captureFrames)
 {
   initialize_if_needed();
@@ -356,9 +354,7 @@ record_event(bool isLeft,
   }
 
   if (s.events) {
-    s.events << hostUs << ',' << id << ',' << kind << ',' << (isLeft ? 'L' : 'R') << ','
-             << static_cast<unsigned>(currentPhase) << ',' << static_cast<unsigned>(currentSequence) << ','
-             << static_cast<unsigned>(currentPeriod) << ',' << baseTime << ',' << frameCycle << ",\""
+    s.events << hostUs << ',' << id << ',' << kind << ',' << (isLeft ? 'L' : 'R') << ",\""
              << hex_bytes(payload, payloadSize) << "\"\n";
     s.events.flush();
   }
@@ -378,12 +374,7 @@ SonyOpticalCapture::Enabled()
 void
 SonyOpticalCapture::NoteLedCommand(bool isLeft,
                                    const void *command,
-                                   size_t commandSize,
-                                   uint8_t currentPhase,
-                                   uint8_t currentSequence,
-                                   uint8_t currentPeriod,
-                                   int32_t baseTime,
-                                   uint32_t frameCycle)
+                                   size_t commandSize)
 {
   if (!Enabled()) {
     return;
@@ -399,22 +390,7 @@ SonyOpticalCapture::NoteLedCommand(bool isLeft,
    */
   const bool captureFrames = commandType == 1 || commandType == 2;
 
-  record_event(isLeft, "led", command, commandSize, currentPhase, currentSequence, currentPeriod, baseTime,
-               frameCycle, captureFrames);
-}
-
-void
-SonyOpticalCapture::NoteTracking(bool isLeft, int oldFlag, int newFlag)
-{
-  if (!Enabled()) {
-    return;
-  }
-
-  std::ostringstream payload;
-  payload << "flag " << oldFlag << " -> " << newFlag;
-  const std::string text = payload.str();
-
-  record_event(isLeft, "tracking", text.data(), text.size(), 0xff, 0xff, 0xff, 0, 0, true);
+  record_event(isLeft, "led", command, commandSize, captureFrames);
 }
 
 void
@@ -495,6 +471,38 @@ SonyOpticalCapture::CapturePublishedPose(const char *deviceLabel,
   const uint64_t hostUs = host_timestamp_us();
 
   std::lock_guard<std::mutex> lock(s.mutex);
+
+  int stateSlot = -1;
+  if (std::strcmp(deviceLabel, "HMD") == 0) {
+    stateSlot = 0;
+  } else if (std::strcmp(deviceLabel, "L") == 0) {
+    stateSlot = 1;
+  } else if (std::strcmp(deviceLabel, "R") == 0) {
+    stateSlot = 2;
+  }
+
+  if (stateSlot >= 0) {
+    const bool valid = pose.poseIsValid;
+    const int result = static_cast<int>(pose.result);
+    if (!s.publishedTrackingStateKnown[stateSlot] ||
+        s.publishedTrackingValid[stateSlot] != valid ||
+        s.publishedTrackingResult[stateSlot] != result) {
+      s.publishedTrackingStateKnown[stateSlot] = true;
+      s.publishedTrackingValid[stateSlot] = valid;
+      s.publishedTrackingResult[stateSlot] = result;
+
+      const uint64_t id = new_event_id();
+      arm_camera_event_locked(s, id);
+      if (s.events) {
+        std::ostringstream payload;
+        payload << "pose_valid=" << (valid ? 1 : 0) << " tracking_result=" << result;
+        s.events << hostUs << ',' << id << ",openvr_tracking," << deviceLabel << ",\""
+                 << payload.str() << "\"\n";
+        s.events.flush();
+      }
+    }
+  }
+
   if (!s.poses) {
     return;
   }
