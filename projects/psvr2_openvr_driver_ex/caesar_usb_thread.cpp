@@ -550,6 +550,10 @@ int CaesarUsbThread::ReadPipeHook(CaesarUsbThread *thisptr, uint8_t pipeId, char
   const uint8_t interfaceNum = thisptr->GetInterface();
   const auto now = std::chrono::steady_clock::now();
 
+  if (result > 0) {
+    SonyOpticalCapture::CaptureObservableUsbRead(interfaceNum, pipeId, buffer, static_cast<size_t>(result));
+  }
+
   {
     std::lock_guard<std::mutex> traceLock(traceMutex);
     if (interfaceNum < 16) {
