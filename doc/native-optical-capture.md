@@ -41,15 +41,17 @@ Records:
 - host timestamp;
 - event id;
 - controller side;
-- exact bytes supplied to the narrow Sony LED-command hook;
+- a generic `led_hook` landmark when the narrow research hook observes a Sony LED-schedule call;
 - tracking landmarks derived from changes in pose validity/tracking result that Sony publishes through OpenVR.
 
-The capture deliberately does **not** export Sony's internal LED-sync structure fields. Phase/sequence/period/
-`cycle_position`/mask facts intended for Monado come from the simultaneous Bluetooth A2/31 wire capture.
+The capture deliberately does **not** export Sony's internal LED-sync structure fields or internal command payload
+bytes. The hook is only a local trigger for retaining nearby USB frames. Phase/sequence/period/`cycle_position`/mask
+facts intended for Monado come from the simultaneous Bluetooth A2/31 wire capture.
 
-All narrow LED-command events are logged for timing correlation. Camera frames are triggered only for commands that
-can visibly change illumination (`SET_SYNC_PHASE` and `SET_LEDS_IMMEDIATE`) plus OpenVR-published tracking-state
-transitions. Periodic command type 6 and timing-only
+The narrow LED hook is retained only as a timing/capture trigger. Camera frames are retained around calls that the
+existing research instrumentation classifies as illumination-changing, plus OpenVR-published tracking-state transitions.
+The trigger classification is not an upstream protocol fact; the simultaneous A2/31 wire capture determines what
+actually changed. Periodic command type 6 and timing-only
 adjustments remain in the CSV but do not consume the image budget.
 
 ### clock_sync.csv
