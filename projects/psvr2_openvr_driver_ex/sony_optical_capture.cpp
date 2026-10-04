@@ -74,6 +74,16 @@ struct UsbDetectorPacket {
   uint8_t pipeId = 0;
 };
 
+struct LedGroundTruthRow {
+  uint64_t hostTimestampUs = 0;
+  uint64_t frameIndex = 0;
+  uint32_t controllerIdx = 0;
+  uint8_t cameraIndex = 0;
+  uint32_t assignedMask = 0;
+  uint32_t matchedMask = 0;
+  std::array<int16_t, 17> blobIndices{};
+};
+
 #pragma pack(push, 1)
 struct UsbDetectorRecordHeader {
   uint32_t magic; // 'ULD8'
@@ -105,6 +115,7 @@ struct CaptureState {
   std::condition_variable writerCv;
   std::deque<QueuedFrame> writerQueue;
   std::deque<UsbDetectorPacket> usbWriterQueue;
+  std::deque<LedGroundTruthRow> ledGroundTruthQueue;
   std::thread writerThread;
   bool stopWriter = false;
 
@@ -176,15 +187,19 @@ writer_main(CaptureState *s)
   for (;;) {
     QueuedFrame frameItem;
     UsbDetectorPacket usbItem;
+    LedGroundTruthRow groundTruthItem;
     bool haveFrame = false;
     bool haveUsb = false;
+    bool haveGroundTruth = false;
 
     {
       std::unique_lock<std::mutex> lock(s->mutex);
       s->writerCv.wait(lock, [s]() {
-        return s->stopWriter || !s->writerQueue.empty() || !s->usbWriterQueue.empty();
+        return s->stopWriter || !s->writerQueue.empty() || !s->usbWriterQueue.empty() ||
+               !s->ledGroundTruthQueue.empty();
       });
-      if (s->stopWriter && s->writerQueue.empty() && s->usbWriterQueue.empty()) {
+      if (s->stopWriter && s->writerQueue.empty() && s->usbWriterQueue.empty() &&
+          s->ledGroundTruthQueue.empty()) {
         break;
       }
 
@@ -196,6 +211,10 @@ writer_main(CaptureState *s)
         usbItem = std::move(s->usbWriterQueue.front());
         s->usbWriterQueue.pop_front();
         haveUsb = true;
+      } else if (!s->ledGroundTruthQueue.empty()) {
+        groundTruthItem = std::move(s->ledGroundTruthQueue.front());
+        s->ledGroundTruthQueue.pop_front();
+        haveGroundTruth = true;
       }
     }
 
@@ -229,6 +248,16 @@ writer_main(CaptureState *s)
       s->ledDetector.write(reinterpret_cast<const char *>(&header), sizeof(header));
       s->ledDetector.write(reinterpret_cast<const char *>(usbItem.bytes.data()),
                            static_cast<std::streamsize>(usbItem.bytes.size()));
+    } else if (haveGroundTruth && s->ledGroundTruth) {
+      s->ledGroundTruth << groundTruthItem.hostTimestampUs << ',' << groundTruthItem.frameIndex << ','
+                        << (groundTruthItem.controllerIdx == 0 ? 'L' : 'R') << ','
+                        << static_cast<unsigned>(groundTruthItem.cameraIndex) << ",0x"
+                        << std::hex << groundTruthItem.assignedMask << ",0x" << groundTruthItem.matchedMask
+                        << std::dec;
+      for (int i = 0; i < 17; ++i) {
+        s->ledGroundTruth << ',' << groundTruthItem.blobIndices[static_cast<size_t>(i)];
+      }
+      s->ledGroundTruth << "\n";
     }
   }
 }
@@ -262,7 +291,7 @@ initialize_if_needed()
         s.clockSync << "qpc_us,unix_us\n";
       }
       if (s.ledGroundTruth) {
-        s.ledGroundTruth << "host_us,frame_index,side,camera,led_id,blob_index,matched\n";
+        s.ledGroundTruth << "host_us,frame_index,side,camera,assigned_mask,matched_mask,blob_0,blob_1,blob_2,blob_3,blob_4,blob_5,blob_6,blob_7,blob_8,blob_9,blob_10,blob_11,blob_12,blob_13,blob_14,blob_15,blob_16\n";
       }
       if (s.poses) {
         s.poses
@@ -533,26 +562,37 @@ void
 SonyOpticalCapture::CaptureLedGroundTruth(uint32_t controllerIdx,
                                          uint64_t frameIndex,
                                          uint8_t cameraIndex,
-                                         uint8_t ledId,
-                                         int16_t blobIndex,
-                                         bool matched)
+                                         uint32_t assignedMask,
+                                         uint32_t matchedMask,
+                                         const int16_t blobIndices[17])
 {
-  if (!Enabled() || controllerIdx >= 2 || cameraIndex >= 4 || ledId >= 17) {
+  if (!Enabled() || controllerIdx >= 2 || cameraIndex >= 4 || blobIndices == nullptr) {
     return;
   }
 
   initialize_if_needed();
   CaptureState &s = state();
-  const uint64_t hostUs = host_timestamp_us();
 
-  std::lock_guard<std::mutex> lock(s.mutex);
-  if (!s.ledGroundTruth) {
-    return;
+  LedGroundTruthRow row;
+  row.hostTimestampUs = host_timestamp_us();
+  row.frameIndex = frameIndex;
+  row.controllerIdx = controllerIdx;
+  row.cameraIndex = cameraIndex;
+  row.assignedMask = assignedMask;
+  row.matchedMask = matchedMask;
+  for (size_t i = 0; i < row.blobIndices.size(); ++i) {
+    row.blobIndices[i] = blobIndices[i];
   }
 
-  s.ledGroundTruth << hostUs << ',' << frameIndex << ',' << (controllerIdx == 0 ? 'L' : 'R') << ','
-                   << static_cast<unsigned>(cameraIndex) << ',' << static_cast<unsigned>(ledId) << ','
-                   << blobIndex << ',' << (matched ? 1 : 0) << "\n";
+  std::lock_guard<std::mutex> lock(s.mutex);
+  // Four rows per processed controller frame at ~60 Hz is small, but keep a bounded queue
+  // so research logging can never grow without limit if disk stalls.
+  constexpr size_t kMaxGroundTruthRowsQueued = 16384;
+  if (s.ledGroundTruthQueue.size() >= kMaxGroundTruthRowsQueued) {
+    return;
+  }
+  s.ledGroundTruthQueue.push_back(std::move(row));
+  s.writerCv.notify_one();
 }
 
 void
