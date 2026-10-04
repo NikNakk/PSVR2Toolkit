@@ -456,7 +456,8 @@ void HmdDeviceCamera::SetUserBit(CameraUser user, bool enable) {
 
   if (oldCameraShouldBeOn != newCameraShouldBeOn) {
     Util::DriverLog("Camera state changed to: {}", newCameraShouldBeOn ? "ON" : "OFF");
-    char data[8] = {1, 0, 0, 0, (char)(newCameraShouldBeOn ? 0x10 : 0x05), 0, 0, 0};
+    const uint32_t cameraMode = newCameraShouldBeOn ? 0x10u : 0x00u;
+    uint32_t data[2] = {1u, cameraMode};
     auto singleton = CaesarManager::getSingleton();
     if (!singleton) {
       Util::DriverLog("[Camera Trace] CaesarManager singleton unavailable; camera control command not sent.");
@@ -466,11 +467,13 @@ void HmdDeviceCamera::SetUserBit(CameraUser user, bool enable) {
       uint16_t subcmd = 1;
       const uint8_t imageInterface = singleton->imageThread->GetInterface();
       const uint8_t imageEndpoint = singleton->imageThread->GetEndpoint();
-      int result = singleton->imageThread->ControlCommand(true, 0xb, data, 8, 0, 0, subcmd);
+      constexpr uint16_t reportId = 0x0b;
+      int result = singleton->imageThread->ControlCommand(true, reportId, data, sizeof(data), reportId, 0, subcmd);
       Util::DriverLog(
-          "[Camera Trace] camera {} control command result={} imageThread=0x{:x} if={} ep=0x{:02x} state={} lastError=0x{:08x}",
-          newCameraShouldBeOn ? "ON" : "OFF", result, reinterpret_cast<uint64_t>(singleton->imageThread),
-          imageInterface, imageEndpoint, singleton->imageThread->m_state, singleton->imageThread->m_lastError);
+          "[Camera Trace] camera {} mode=0x{:02x} report=0x{:02x} wValue=0x{:02x} result={} imageThread=0x{:x} if={} ep=0x{:02x} state={} lastError=0x{:08x}",
+          newCameraShouldBeOn ? "ON" : "OFF", cameraMode, reportId, reportId, result,
+          reinterpret_cast<uint64_t>(singleton->imageThread), imageInterface, imageEndpoint,
+          singleton->imageThread->m_state, singleton->imageThread->m_lastError);
     }
   }
 }
