@@ -319,7 +319,7 @@ queue_frame_locked(CaptureState &s, const FrameSnapshot &frame, uint64_t eventId
   filename << "camera-" << std::setfill('0') << std::setw(4) << captureIndex << "-event-" << std::setw(4)
            << eventId << "-rel-" << (relativeFrame >= 0 ? "p" : "m") << std::setw(2)
            << (relativeFrame >= 0 ? relativeFrame : -relativeFrame) << "-set-" << frame.cameraSet
-           << "-ts-" << frame.imageTimestamp << ".vi11";
+           << "-ts-" << frame.imageTimestamp << ".vi";
 
   QueuedFrame queued;
   queued.frame = frame; // Memory copy only on the Sony/camera callback; disk I/O is done by writer_main.
@@ -378,46 +378,10 @@ record_event(bool isLeft,
   }
 }
 
-} // namespace
-
-bool
-SonyOpticalCapture::Enabled()
-{
-  static const bool enabled =
-      VRSettings::GetBool(STEAMVR_SETTINGS_CAPTURE_SONY_OPTICAL_TRACE,
-                          SETTING_CAPTURE_SONY_OPTICAL_TRACE_DEFAULT_VALUE);
-  return enabled;
-}
-
 void
-SonyOpticalCapture::NoteLedCommand(bool isLeft,
-                                   const void *command,
-                                   size_t commandSize)
+capture_observable_camera_packet(const void *imageData, size_t imageSize)
 {
-  if (!Enabled()) {
-    return;
-  }
-
-  const auto *rawCommand = static_cast<const uint8_t *>(command);
-  const uint8_t commandType = commandSize > 0 && rawCommand ? rawCommand[0] : 0xff;
-
-  /*
-   * Save before/after frames only for commands that can visibly change the illumination pattern:
-   * SET_SYNC_PHASE (1) and SET_LEDS_IMMEDIATE (2). Timing-only changes and the ~1 Hz maintenance
-   * command remain in events.csv but do not consume the bounded frame budget.
-   */
-  const bool captureFrames = commandType == 1 || commandType == 2;
-
-  record_event(isLeft, "led", command, commandSize, captureFrames);
-}
-
-void
-SonyOpticalCapture::CaptureTrackingImage(const void *imageData,
-                                         size_t imageSize,
-                                         uint32_t imageTimestamp,
-                                         uint16_t imageType)
-{
-  if (!Enabled() || imageType != 11 || imageData == nullptr || imageSize == 0) {
+  if (imageData == nullptr || imageSize < sizeof(ObservableCameraHeader)) {
     return;
   }
 
@@ -432,8 +396,8 @@ SonyOpticalCapture::CaptureTrackingImage(const void *imageData,
    */
   FrameSnapshot &current = s.history[s.historyNext];
   current.hostTimestampUs = host_timestamp_us();
-  current.imageTimestamp = imageTimestamp;
-  current.cameraSet = imageType;
+  current.imageTimestamp = 0;
+  current.cameraSet = 0;
   current.sequenceId = 0;
   current.imageHeight = 0;
   current.activeHeight = 0;
@@ -482,6 +446,39 @@ SonyOpticalCapture::CaptureTrackingImage(const void *imageData,
 
   s.historyNext = (s.historyNext + 1) % kPreFramesPerEvent;
   s.historyCount = std::min(s.historyCount + 1, static_cast<size_t>(kPreFramesPerEvent));
+}
+
+} // namespace
+
+bool
+SonyOpticalCapture::Enabled()
+{
+  static const bool enabled =
+      VRSettings::GetBool(STEAMVR_SETTINGS_CAPTURE_SONY_OPTICAL_TRACE,
+                          SETTING_CAPTURE_SONY_OPTICAL_TRACE_DEFAULT_VALUE);
+  return enabled;
+}
+
+void
+SonyOpticalCapture::NoteLedCommand(bool isLeft,
+                                   const void *command,
+                                   size_t commandSize)
+{
+  if (!Enabled()) {
+    return;
+  }
+
+  const auto *rawCommand = static_cast<const uint8_t *>(command);
+  const uint8_t commandType = commandSize > 0 && rawCommand ? rawCommand[0] : 0xff;
+
+  /*
+   * Save before/after frames only for commands that can visibly change the illumination pattern:
+   * SET_SYNC_PHASE (1) and SET_LEDS_IMMEDIATE (2). Timing-only changes and the ~1 Hz maintenance
+   * command remain in events.csv but do not consume the bounded frame budget.
+   */
+  const bool captureFrames = commandType == 1 || commandType == 2;
+
+  record_event(isLeft, "led", command, commandSize, captureFrames);
 }
 
 void
@@ -557,7 +554,21 @@ SonyOpticalCapture::CaptureObservableUsbRead(uint8_t interfaceNumber,
                                              const void *data,
                                              size_t size)
 {
-  if (!Enabled() || interfaceNumber != 8 || pipeId != 0x89 || data == nullptr || size == 0) {
+  if (!Enabled() || data == nullptr || size == 0) {
+    return;
+  }
+
+  // Camera: capture the completed raw IF6/0x87 USB packet itself. This is the clean-room source of VI frames.
+  if (interfaceNumber == 6 && pipeId == 0x87) {
+    const auto *bytes = static_cast<const uint8_t *>(data);
+    if (size >= 2 && bytes[0] == 'V' && bytes[1] == 'I') {
+      capture_observable_camera_packet(data, size);
+    }
+    return;
+  }
+
+  // LED detector: preserve the raw externally observable IF8/0x89 payload for black-box offline analysis.
+  if (interfaceNumber != 8 || pipeId != 0x89) {
     return;
   }
 
