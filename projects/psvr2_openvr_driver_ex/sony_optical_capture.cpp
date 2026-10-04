@@ -24,7 +24,8 @@ namespace {
 
 constexpr uint32_t kPreFramesPerEvent = 2;
 constexpr uint32_t kPostFramesPerEvent = 3;
-constexpr uint32_t kMaxCameraFrames = 160;
+constexpr uint32_t kMaxCameraFrames = 240;
+constexpr uint32_t kPeriodicCameraSampleStride = 60; // ~1 Hz at the observed 60 Hz stream.
 constexpr size_t kMaxQueuedUsbPackets = 512;
 constexpr uint64_t kMaxLedDetectorBytes = 256ULL * 1024ULL * 1024ULL;
 
@@ -113,6 +114,7 @@ struct CaptureState {
   std::deque<ActiveEvent> activeEvents;
 
   uint32_t cameraFramesQueued = 0;
+  uint64_t cameraFrameOrdinal = 0;
   uint64_t ledDetectorBytesQueued = 0;
   uint64_t ledDetectorPacketsDropped = 0;
 
@@ -267,7 +269,8 @@ initialize_if_needed()
 
       Util::DriverLog(
           "[Sony Optical Capture] directory={} camera-only clean-room capture: {} pre + {} post frames/event, "
-          "maxCameraFrames={} (background writer); observable IF8/0x89 LED-detector USB capture capped at {} MiB",
+          "maxCameraFrames={} with ~1 Hz periodic samples (background writer); observable IF8/0x89 LED-detector "
+          "USB capture capped at {} MiB",
           s.directory.string(), kPreFramesPerEvent, kPostFramesPerEvent, kMaxCameraFrames,
           kMaxLedDetectorBytes / (1024 * 1024));
     } catch (const std::exception &e) {
@@ -457,6 +460,12 @@ SonyOpticalCapture::CaptureTrackingImage(const void *imageData,
   }
   current.bytes.resize(imageSize);
   std::memcpy(current.bytes.data(), bytes, imageSize);
+
+  ++s.cameraFrameOrdinal;
+  if (s.cameraFrameOrdinal % kPeriodicCameraSampleStride == 0) {
+    // event_id=0 / relative_frame=0 denotes a periodic clean-room geometry sample.
+    queue_frame_locked(s, current, 0, 0);
+  }
 
   for (auto it = s.activeEvents.begin(); it != s.activeEvents.end();) {
     queue_frame_locked(s, current, it->eventId, it->nextPostRelativeIndex);
