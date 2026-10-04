@@ -25,6 +25,8 @@ namespace {
 constexpr uint32_t kPreFramesPerEvent = 2;
 constexpr uint32_t kPostFramesPerEvent = 3;
 constexpr uint32_t kMaxCameraFrames = 160;
+constexpr size_t kMaxQueuedUsbPackets = 512;
+constexpr uint64_t kMaxLedDetectorBytes = 256ULL * 1024ULL * 1024ULL;
 
 struct FrameSnapshot {
   std::vector<uint8_t> bytes;
@@ -41,6 +43,24 @@ struct QueuedFrame {
   std::string filename;
 };
 
+struct UsbDetectorPacket {
+  std::vector<uint8_t> bytes;
+  uint64_t hostTimestampUs = 0;
+  uint8_t interfaceNumber = 0;
+  uint8_t pipeId = 0;
+};
+
+#pragma pack(push, 1)
+struct UsbDetectorRecordHeader {
+  uint32_t magic; // 'ULD8'
+  uint16_t version;
+  uint8_t interfaceNumber;
+  uint8_t pipeId;
+  uint64_t hostTimestampUs;
+  uint32_t payloadSize;
+};
+#pragma pack(pop)
+
 struct ActiveEvent {
   uint64_t eventId = 0;
   uint32_t postFramesRemaining = 0;
@@ -53,10 +73,12 @@ struct CaptureState {
   std::ofstream events;
   std::ofstream frames;
   std::ofstream poses;
+  std::ofstream ledDetector;
 
   std::mutex mutex;
   std::condition_variable writerCv;
   std::deque<QueuedFrame> writerQueue;
+  std::deque<UsbDetectorPacket> usbWriterQueue;
   std::thread writerThread;
   bool stopWriter = false;
 
@@ -68,6 +90,8 @@ struct CaptureState {
   std::deque<ActiveEvent> activeEvents;
 
   uint32_t cameraFramesQueued = 0;
+  uint64_t ledDetectorBytesQueued = 0;
+  uint64_t ledDetectorPacketsDropped = 0;
 
   ~CaptureState()
   {
@@ -126,33 +150,58 @@ void
 writer_main(CaptureState *s)
 {
   for (;;) {
-    QueuedFrame item;
+    QueuedFrame frameItem;
+    UsbDetectorPacket usbItem;
+    bool haveFrame = false;
+    bool haveUsb = false;
+
     {
       std::unique_lock<std::mutex> lock(s->mutex);
-      s->writerCv.wait(lock, [s]() { return s->stopWriter || !s->writerQueue.empty(); });
-      if (s->stopWriter && s->writerQueue.empty()) {
+      s->writerCv.wait(lock, [s]() {
+        return s->stopWriter || !s->writerQueue.empty() || !s->usbWriterQueue.empty();
+      });
+      if (s->stopWriter && s->writerQueue.empty() && s->usbWriterQueue.empty()) {
         break;
       }
 
-      item = std::move(s->writerQueue.front());
-      s->writerQueue.pop_front();
+      if (!s->writerQueue.empty()) {
+        frameItem = std::move(s->writerQueue.front());
+        s->writerQueue.pop_front();
+        haveFrame = true;
+      } else if (!s->usbWriterQueue.empty()) {
+        usbItem = std::move(s->usbWriterQueue.front());
+        s->usbWriterQueue.pop_front();
+        haveUsb = true;
+      }
     }
 
-    const std::filesystem::path path = s->directory / item.filename;
-    std::ofstream out(path, std::ios::out | std::ios::binary | std::ios::trunc);
-    if (!out) {
-      continue;
-    }
+    if (haveFrame) {
+      const std::filesystem::path path = s->directory / frameItem.filename;
+      std::ofstream out(path, std::ios::out | std::ios::binary | std::ios::trunc);
+      if (out) {
+        out.write(reinterpret_cast<const char *>(frameItem.frame.bytes.data()),
+                  static_cast<std::streamsize>(frameItem.frame.bytes.size()));
+        out.close();
 
-    out.write(reinterpret_cast<const char *>(item.frame.bytes.data()),
-              static_cast<std::streamsize>(item.frame.bytes.size()));
-    out.close();
-
-    if (s->frames) {
-      s->frames << item.frame.hostTimestampUs << ',' << item.captureIndex << ',' << item.eventId << ','
-                << item.relativeFrame << ',' << item.frame.imageTimestamp << ',' << item.frame.imageType << ','
-                << item.frame.bytes.size() << ',' << item.filename << "\n";
-      s->frames.flush();
+        if (s->frames) {
+          s->frames << frameItem.frame.hostTimestampUs << ',' << frameItem.captureIndex << ','
+                    << frameItem.eventId << ',' << frameItem.relativeFrame << ','
+                    << frameItem.frame.imageTimestamp << ',' << frameItem.frame.imageType << ','
+                    << frameItem.frame.bytes.size() << ',' << frameItem.filename << "\n";
+          s->frames.flush();
+        }
+      }
+    } else if (haveUsb && s->ledDetector) {
+      UsbDetectorRecordHeader header = {};
+      header.magic = 0x38444c55; // 'ULD8' on little-endian Windows.
+      header.version = 1;
+      header.interfaceNumber = usbItem.interfaceNumber;
+      header.pipeId = usbItem.pipeId;
+      header.hostTimestampUs = usbItem.hostTimestampUs;
+      header.payloadSize = static_cast<uint32_t>(usbItem.bytes.size());
+      s->ledDetector.write(reinterpret_cast<const char *>(&header), sizeof(header));
+      s->ledDetector.write(reinterpret_cast<const char *>(usbItem.bytes.data()),
+                           static_cast<std::streamsize>(usbItem.bytes.size()));
     }
   }
 }
@@ -170,6 +219,8 @@ initialize_if_needed()
       s.events.open(s.directory / "events.csv", std::ios::out | std::ios::trunc);
       s.frames.open(s.directory / "camera_frames.csv", std::ios::out | std::ios::trunc);
       s.poses.open(s.directory / "poses.csv", std::ios::out | std::ios::trunc);
+      s.ledDetector.open(s.directory / "usb-if8-led-detector.bin",
+                         std::ios::out | std::ios::binary | std::ios::trunc);
 
       if (s.events) {
         s.events << "host_us,event_id,kind,side,current_phase,current_seq,current_period,base_time,frame_cycle,payload_hex\n";
@@ -189,8 +240,9 @@ initialize_if_needed()
 
       Util::DriverLog(
           "[Sony Optical Capture] directory={} camera-only clean-room capture: {} pre + {} post frames/event, "
-          "maxCameraFrames={} (background writer)",
-          s.directory.string(), kPreFramesPerEvent, kPostFramesPerEvent, kMaxCameraFrames);
+          "maxCameraFrames={} (background writer); observable IF8/0x89 LED-detector USB capture capped at {} MiB",
+          s.directory.string(), kPreFramesPerEvent, kPostFramesPerEvent, kMaxCameraFrames,
+          kMaxLedDetectorBytes / (1024 * 1024));
     } catch (const std::exception &e) {
       Util::DriverLog("[Sony Optical Capture] initialization failed: {}", e.what());
     }
@@ -407,6 +459,37 @@ SonyOpticalCapture::CapturePublishedPose(const char *deviceLabel,
           << pose.qDriverFromHeadRotation.y << ',' << pose.qDriverFromHeadRotation.z << ','
           << pose.vecDriverFromHeadTranslation[0] << ',' << pose.vecDriverFromHeadTranslation[1] << ','
           << pose.vecDriverFromHeadTranslation[2] << "\n";
+}
+
+void
+SonyOpticalCapture::CaptureObservableUsbRead(uint8_t interfaceNumber,
+                                             uint8_t pipeId,
+                                             const void *data,
+                                             size_t size)
+{
+  if (!Enabled() || interfaceNumber != 8 || pipeId != 0x89 || data == nullptr || size == 0) {
+    return;
+  }
+
+  initialize_if_needed();
+  CaptureState &s = state();
+
+  std::lock_guard<std::mutex> lock(s.mutex);
+  if (s.ledDetectorBytesQueued + size > kMaxLedDetectorBytes ||
+      s.usbWriterQueue.size() >= kMaxQueuedUsbPackets) {
+    ++s.ledDetectorPacketsDropped;
+    return;
+  }
+
+  UsbDetectorPacket packet;
+  packet.hostTimestampUs = host_timestamp_us();
+  packet.interfaceNumber = interfaceNumber;
+  packet.pipeId = pipeId;
+  const auto *bytes = static_cast<const uint8_t *>(data);
+  packet.bytes.assign(bytes, bytes + size);
+  s.ledDetectorBytesQueued += size;
+  s.usbWriterQueue.push_back(std::move(packet));
+  s.writerCv.notify_one();
 }
 
 } // namespace psvr2_toolkit
