@@ -41,12 +41,15 @@ Records:
 - host timestamp;
 - event id;
 - controller side;
-- current phase/sequence/period/base time/frame cycle;
 - exact bytes supplied to the narrow Sony LED-command hook;
-- Sony tracking-state transitions used only as capture landmarks.
+- tracking landmarks derived from changes in pose validity/tracking result that Sony publishes through OpenVR.
 
-All commands are logged. Camera frames are triggered only for commands that can visibly change illumination
-(`SET_SYNC_PHASE` and `SET_LEDS_IMMEDIATE`) plus tracking-state transitions. Periodic command type 6 and timing-only
+The capture deliberately does **not** export Sony's internal LED-sync structure fields. Phase/sequence/period/
+`cycle_position`/mask facts intended for Monado come from the simultaneous Bluetooth A2/31 wire capture.
+
+All narrow LED-command events are logged for timing correlation. Camera frames are triggered only for commands that
+can visibly change illumination (`SET_SYNC_PHASE` and `SET_LEDS_IMMEDIATE`) plus OpenVR-published tracking-state
+transitions. Periodic command type 6 and timing-only
 adjustments remain in the CSV but do not consume the image budget.
 
 ### poses.csv
