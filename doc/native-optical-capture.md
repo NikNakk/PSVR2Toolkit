@@ -62,7 +62,11 @@ to estimate emitter positions.
 
 ### camera_frames.csv and camera-*.vi11
 
-Toolkit keeps a rolling two-frame history of the observable type-11 USB camera stream. For each interesting event it
+Toolkit keeps a rolling two-frame history of the observable VI camera stream. The field previously labelled
+`image_type=11` in Toolkit is at the same wire offset as Monado's independently parsed `camera_set`; the capture
+therefore records it as `camera_set`, together with VI sequence ID and image/active dimensions from the raw header.
+
+Toolkit keeps a rolling two-frame history of this stream. For each interesting event it
 saves:
 
 - two frames immediately before the event (`relative_frame=-2,-1`);
@@ -71,24 +75,27 @@ saves:
 Capture is capped at 160 frames. The Sony/camera callback path only copies selected frames into a bounded memory queue;
 the actual file I/O runs on a background writer thread so disk latency does not block the native LED state machine.
 
-Each `.vi11` file contains the complete native type-11 VI record:
+Each `.vi11` file contains the complete raw USB VI record. We deliberately no longer label the payload as BC4:
+Toolkit's old camera-conversion path made that assumption, while Monado's independent observable USB analysis exposes a
+different 8-byte-per-sample packing for the same 1,040,640-byte packet size.
 
-- 256-byte VI header;
-- two BC4 `1024x1016` camera textures;
-- useful image width 1016 pixels; final 8 columns are texture padding.
+For the mode-0x10-sized packet, the bytes after the 256-byte header fit exactly as:
 
-This gives a direct before/after record of which IR image features changed when the native controller report changed.
-
-## Decode frames
-
-Dependency-free decoder:
-
-```powershell
-py scripts\decode_psvr2_vi11.py "$env:TEMP\psvr2-toolkit-optical-<pid>"
+```
+508 rows × (254 samples × 8 byte lanes + 16 bytes row padding)
 ```
 
-It writes left/right 8-bit PGM images beside each captured frame. Use `--gain 2` if needed for viewing faint IR
-features.
+The physical/semantic meaning of those lanes is intentionally left open until a new capture verifies the VI header and
+before/after image behaviour.
+
+## Inspect/extract observable VI lanes
+
+```powershell
+py scripts\extract_psvr2_vi_lanes.py "$env:TEMP\psvr2-toolkit-optical-<pid>"
+```
+
+This prints each frame's raw VI header metadata and writes lanes 0..7 as semantics-free 254×508 PGM images. It does
+not claim that any particular lane is a named camera or colour channel.
 
 ## Difference LED events automatically
 
@@ -96,13 +103,13 @@ features.
 py scripts\analyze_psvr2_led_frame_changes.py "$env:TEMP\psvr2-toolkit-optical-<pid>"
 ```
 
-For every event with both a `-1` and `+1` frame, this writes:
+For every event with both a `-1` and `+1` frame, this compares each of the eight observable byte lanes and writes:
 
-- pre-event PGM;
-- post-event PGM;
-- absolute-difference PGM;
-- `led-frame-diffs\regions.csv` containing connected changed regions, bounding boxes, centroids, area and peak/mean
-  luma change.
+- pre-event lane PGM;
+- post-event lane PGM;
+- absolute-difference lane PGM;
+- `led-frame-diffs\regions.csv` containing lane number, changed-region bounding boxes, centroids, area and peak/mean
+  byte change.
 
 Useful options:
 
@@ -116,6 +123,17 @@ tracker data.
 
 Do not assume those values are a literal 17-bit physical-LED bitmap. The successful trace changed only the first byte
 of the four-byte field even though the Sense constellation model has 17 LEDs.
+
+### usb-if8-led-detector.bin
+
+The successful Windows run also showed interface 8 / endpoint `0x89` delivering 36,944 bytes at 60 Hz. Monado's
+independently written PSVR2 driver identifies the corresponding endpoint as the **LED Detector** stream. Because this is
+externally observable USB data, it is within the clean-room boundary.
+
+The capture branch records the raw IF8/0x89 packets into `usb-if8-led-detector.bin`, each preceded by a small local
+record header containing host QPC timestamp, interface, pipe and payload length. Capture is capped at 256 MiB and uses
+the same background writer queue. No semantic structure is assumed yet; we can correlate packet changes against
+Bluetooth A2/31 schedule changes and camera frames offline.
 
 ## Analyse Bluetooth ETW capture
 
@@ -156,6 +174,7 @@ The static periods are important: image differencing then isolates emitter chang
 
 ## Non-interference
 
-The camera copy happens after Sony's normal image poll has completed. The new code does not replace Sony's controller output, pose solver or camera processing. It observes the same camera
-USB payload Sony receives, the poses Sony publishes through OpenVR, and uses event timestamps only to choose which nearby
-frames to retain.
+The camera copy happens after Sony's normal image poll has completed. IF8 data is copied from the completed observable
+USB read. Disk writes run on a background writer thread. The new code does not replace Sony's controller output, pose
+solver or camera processing; it observes USB payloads and poses Sony publishes through OpenVR, and uses event timestamps
+only to choose which nearby camera frames to retain.
