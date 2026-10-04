@@ -4,6 +4,7 @@
 #include "hmd2_gaze.h"
 #include "hmd_device_camera.h"
 #include "hmd_driver_loader.h"
+#include "sony_optical_capture.h"
 #include "hook_lib.h"
 #include "util.h"
 
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <chrono>
+#include <cstddef>
 
 namespace psvr2_toolkit {
 struct image_data {
@@ -167,6 +169,16 @@ int CaesarUsbThreadImage__pollHook(void *thisptr) {
         CustomShareManager::getSingleton()->setGazeImage((unsigned char *)&a1->image_data);
       } else if (a1->image_data.image_type == 11) {
         ++trackingImageCount;
+
+        size_t captureSize = static_cast<size_t>(a1->image_data.total_size);
+        const size_t imageHeaderSize = offsetof(image_data, data);
+        const size_t expectedTrackingSize = imageHeaderSize + (2 * BC4_DATA_SIZE);
+        if (captureSize < imageHeaderSize || captureSize > sizeof(image_data)) {
+          captureSize = expectedTrackingSize;
+        }
+        SonyOpticalCapture::CaptureTrackingImage(&a1->image_data, captureSize, a1->image_data.timestamp,
+                                                 a1->image_data.image_type);
+
         static HmdDeviceCamera *pHmdDeviceCamera = HmdDeviceCamera::Instance();
 
         int64_t hmdToHostOffset;
