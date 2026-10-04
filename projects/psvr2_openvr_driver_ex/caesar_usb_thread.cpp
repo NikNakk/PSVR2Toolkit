@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <chrono>
 #include <debugapi.h>
 #include <mutex>
 #include <shared_mutex>
@@ -528,7 +529,62 @@ int CaesarUsbThread::PollAndProcessHook(CaesarUsbThread *thisptr) {
 }
 
 int CaesarUsbThread::ReadPipeHook(CaesarUsbThread *thisptr, uint8_t pipeId, char *buffer, size_t length) {
-  return thisptr->TransferPipe(pipeId, buffer, length);
+  const int result = thisptr->TransferPipe(pipeId, buffer, length);
+
+  struct ReadStats {
+    uint64_t calls = 0;
+    uint64_t zeroReads = 0;
+    uint64_t nonzeroReads = 0;
+    uint64_t errors = 0;
+    uint64_t bytes = 0;
+    uint8_t lastPipe = 0;
+    size_t lastLength = 0;
+    int lastResult = 0;
+    uint32_t lastError = 0;
+  };
+
+  static std::mutex traceMutex;
+  static ReadStats stats[16];
+  static auto lastTrace = std::chrono::steady_clock::now();
+
+  const uint8_t interfaceNum = thisptr->GetInterface();
+  const auto now = std::chrono::steady_clock::now();
+
+  {
+    std::lock_guard<std::mutex> traceLock(traceMutex);
+    if (interfaceNum < 16) {
+      ReadStats &s = stats[interfaceNum];
+      ++s.calls;
+      if (result > 0) {
+        ++s.nonzeroReads;
+        s.bytes += static_cast<uint64_t>(result);
+      } else if (result == 0) {
+        ++s.zeroReads;
+      } else {
+        ++s.errors;
+      }
+      s.lastPipe = pipeId;
+      s.lastLength = length;
+      s.lastResult = result;
+      s.lastError = thisptr->m_lastError;
+    }
+
+    if (now - lastTrace >= std::chrono::seconds(1)) {
+      for (uint8_t i = 0; i < 16; ++i) {
+        ReadStats &s = stats[i];
+        if (s.calls == 0) {
+          continue;
+        }
+        Util::DriverLog(
+            "[USB Read Trace] if={} calls={} nonzero={} zero={} errors={} bytes={} lastPipe=0x{:02x} lastReq={} lastResult={} lastError=0x{:08x}",
+            i, s.calls, s.nonzeroReads, s.zeroReads, s.errors, s.bytes, s.lastPipe, s.lastLength, s.lastResult, s.lastError);
+        s = {};
+      }
+      lastTrace = now;
+    }
+  }
+
+  return result;
 }
 
 int CaesarUsbThread::ControlCommandHook(CaesarUsbThread *thisptr, uint8_t bIsSet, uint16_t reportId, void *buffer, uint16_t length, uint16_t value,
