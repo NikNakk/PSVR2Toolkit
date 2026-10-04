@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Compare PS VR2 tracking-camera frames immediately before/after native LED events.
+"""Compare observable PS VR2 VI byte-lane images around native LED events.
 
-Input is a capture directory produced by experiment/native-optical-capture.
-For each event with a rel=-1 frame and rel=+1 frame, the script decodes both
-stereo BC4 images, writes absolute-difference PGM images, and reports connected
-regions whose luma change exceeds a threshold.
+This uses only the raw USB packet layout:
+  256-byte VI header
+  508 rows * (254 samples * 8 byte lanes + 16 row-padding bytes)
 
-This is intentionally a behavioural/camera-I/O analysis. It does not consume
-Sony internal optical-tracker data.
+It deliberately does not assign camera/colour/codec semantics to the eight
+lanes. For each event with rel=-1 and rel=+1 frames, it writes absolute
+difference PGM images and connected changed regions for every lane.
 
 Usage:
   py scripts/analyze_psvr2_led_frame_changes.py "%TEMP%\\psvr2-toolkit-optical-12345"
@@ -21,30 +21,39 @@ import csv
 from collections import deque
 from pathlib import Path
 
-from decode_psvr2_vi11 import (
-    BC4_EYE_SIZE,
-    HEADER_SIZE,
-    decode_eye,
-    write_pgm,
-)
-
-WIDTH = 1016
-HEIGHT = 1016
+HEADER_SIZE = 256
+HEIGHT = 508
+WIDTH = 254
+LANES = 8
+ROW_PADDING = 16
+ROW_BYTES = WIDTH * LANES + ROW_PADDING
+PACKET_SIZE = HEADER_SIZE + HEIGHT * ROW_BYTES
 
 
-def load_eye(path: Path, eye: str, gain: float) -> bytearray:
+def write_pgm(path: Path, pixels: bytes) -> None:
+    with path.open("wb") as f:
+        f.write(f"P5\n{WIDTH} {HEIGHT}\n255\n".encode("ascii"))
+        f.write(pixels)
+
+
+def load_lanes(path: Path) -> list[bytearray]:
     raw = path.read_bytes()
-    payload = raw[HEADER_SIZE : HEADER_SIZE + 2 * BC4_EYE_SIZE]
-    if len(payload) != 2 * BC4_EYE_SIZE:
-        raise ValueError(f"{path}: short VI11 payload")
-    if eye == "left":
-        return decode_eye(payload[:BC4_EYE_SIZE], gain)
-    return decode_eye(payload[BC4_EYE_SIZE:], gain)
+    if len(raw) != PACKET_SIZE or raw[:2] != b"VI":
+        raise ValueError(f"{path}: expected {PACKET_SIZE}-byte VI packet, got {len(raw)}")
+
+    payload = memoryview(raw)[HEADER_SIZE:]
+    planes = [bytearray(WIDTH * HEIGHT) for _ in range(LANES)]
+    for y in range(HEIGHT):
+        row = payload[y * ROW_BYTES : (y + 1) * ROW_BYTES]
+        for x in range(WIDTH):
+            base = x * LANES
+            out = y * WIDTH + x
+            for lane in range(LANES):
+                planes[lane][out] = row[base + lane]
+    return planes
 
 
 def abs_diff(a: bytes, b: bytes) -> bytearray:
-    if len(a) != len(b):
-        raise ValueError("image sizes differ")
     return bytearray(abs(x - y) for x, y in zip(a, b))
 
 
@@ -58,14 +67,11 @@ def components(diff: bytes, threshold: int, min_area: int):
         active[start] = 0
         q = deque([start])
         area = 0
-        sum_x = 0
-        sum_y = 0
-        sum_change = 0
+        sum_x = sum_y = sum_change = 0
         peak = 0
         min_x = WIDTH
         min_y = HEIGHT
-        max_x = 0
-        max_y = 0
+        max_x = max_y = 0
 
         while q:
             idx = q.popleft()
@@ -82,14 +88,15 @@ def components(diff: bytes, threshold: int, min_area: int):
             min_y = min(min_y, y)
             max_y = max(max_y, y)
 
-            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1),
-                           (x - 1, y - 1), (x + 1, y - 1), (x - 1, y + 1), (x + 1, y + 1)):
-                if nx < 0 or nx >= WIDTH or ny < 0 or ny >= HEIGHT:
-                    continue
-                ni = ny * WIDTH + nx
-                if active[ni]:
-                    active[ni] = 0
-                    q.append(ni)
+            for nx, ny in (
+                (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1),
+                (x - 1, y - 1), (x + 1, y - 1), (x - 1, y + 1), (x + 1, y + 1),
+            ):
+                if 0 <= nx < WIDTH and 0 <= ny < HEIGHT:
+                    ni = ny * WIDTH + nx
+                    if active[ni]:
+                        active[ni] = 0
+                        q.append(ni)
 
         if area >= min_area:
             regions.append({
@@ -113,7 +120,6 @@ def main() -> None:
     ap.add_argument("capture_dir", type=Path)
     ap.add_argument("--threshold", type=int, default=20)
     ap.add_argument("--min-area", type=int, default=2)
-    ap.add_argument("--gain", type=float, default=1.0)
     ap.add_argument("--max-regions", type=int, default=32)
     args = ap.parse_args()
 
@@ -136,7 +142,7 @@ def main() -> None:
     summary_path = out_dir / "regions.csv"
 
     fields = [
-        "event_id", "kind", "side", "payload_hex", "eye", "region_rank",
+        "event_id", "kind", "side", "payload_hex", "lane", "region_rank",
         "area", "centroid_x", "centroid_y", "min_x", "min_y", "max_x", "max_y",
         "peak", "mean_change", "pre_file", "post_file",
     ]
@@ -155,12 +161,11 @@ def main() -> None:
             event = event_rows.get(event_id, {})
             completed += 1
 
-            for eye in ("left", "right"):
-                pre = load_eye(pre_path, eye, args.gain)
-                post = load_eye(post_path, eye, args.gain)
+            pre_lanes = load_lanes(pre_path)
+            post_lanes = load_lanes(post_path)
+            for lane, (pre, post) in enumerate(zip(pre_lanes, post_lanes)):
                 diff = abs_diff(pre, post)
-
-                prefix = out_dir / f"event-{int(event_id):04d}-{eye}"
+                prefix = out_dir / f"event-{int(event_id):04d}-lane{lane}"
                 write_pgm(prefix.with_name(prefix.name + "-pre.pgm"), pre)
                 write_pgm(prefix.with_name(prefix.name + "-post.pgm"), post)
                 write_pgm(prefix.with_name(prefix.name + "-diff.pgm"), diff)
@@ -172,7 +177,7 @@ def main() -> None:
                         "kind": event.get("kind", ""),
                         "side": event.get("side", ""),
                         "payload_hex": event.get("payload_hex", ""),
-                        "eye": eye,
+                        "lane": lane,
                         "region_rank": rank,
                         **region,
                         "pre_file": pre_path.name,
@@ -180,8 +185,7 @@ def main() -> None:
                     })
 
                 print(
-                    f"event {event_id} {eye}: {len(regs)} regions >= threshold {args.threshold}; "
-                    f"wrote pre/post/diff"
+                    f"event {event_id} lane {lane}: {len(regs)} regions >= threshold {args.threshold}"
                 )
 
     print(f"analysed {completed} events; region summary: {summary_path}")
