@@ -169,25 +169,6 @@ unix_timestamp_us()
   return (ticks.QuadPart - kWindowsToUnixEpoch100ns) / 10ULL;
 }
 
-std::string
-hex_bytes(const void *data, size_t size)
-{
-  if (data == nullptr || size == 0) {
-    return {};
-  }
-
-  const auto *bytes = static_cast<const uint8_t *>(data);
-  std::ostringstream out;
-  out << std::hex << std::setfill('0');
-  for (size_t i = 0; i < size; ++i) {
-    if (i != 0) {
-      out << ' ';
-    }
-    out << std::setw(2) << static_cast<unsigned>(bytes[i]);
-  }
-  return out.str();
-}
-
 void
 writer_main(CaptureState *s)
 {
@@ -269,7 +250,7 @@ initialize_if_needed()
                          std::ios::out | std::ios::binary | std::ios::trunc);
 
       if (s.events) {
-        s.events << "host_us,event_id,kind,side,payload_hex\n";
+        s.events << "host_us,event_id,kind,side,detail\n";
       }
       if (s.frames) {
         s.frames << "host_us,capture_index,event_id,relative_frame,vts_us,sequence_id,camera_set,"
@@ -354,11 +335,7 @@ arm_camera_event_locked(CaptureState &s, uint64_t eventId)
 }
 
 void
-record_event(bool isLeft,
-             const char *kind,
-             const void *payload,
-             size_t payloadSize,
-             bool captureFrames)
+record_event(bool isLeft, const char *kind, bool captureFrames)
 {
   initialize_if_needed();
   CaptureState &s = state();
@@ -372,8 +349,7 @@ record_event(bool isLeft,
   }
 
   if (s.events) {
-    s.events << hostUs << ',' << id << ',' << kind << ',' << (isLeft ? 'L' : 'R') << ",\""
-             << hex_bytes(payload, payloadSize) << "\"\n";
+    s.events << hostUs << ',' << id << ',' << kind << ',' << (isLeft ? 'L' : 'R') << ",\"\"\n";
     s.events.flush();
   }
 }
@@ -478,7 +454,7 @@ SonyOpticalCapture::NoteLedCommand(bool isLeft,
    */
   const bool captureFrames = commandType == 1 || commandType == 2;
 
-  record_event(isLeft, "led", command, commandSize, captureFrames);
+  record_event(isLeft, "led_hook", captureFrames);
 }
 
 void
