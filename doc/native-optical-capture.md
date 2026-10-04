@@ -214,3 +214,95 @@ The static periods are important: image differencing then isolates emitter chang
 IF6 camera and IF8 LED-detector data are copied directly from completed observable USB reads, before any semantic interpretation by the capture code. Disk writes run on a background writer thread. The new code does not replace Sony's controller output, pose
 solver or camera processing; it observes USB payloads and poses Sony publishes through OpenVR, and uses event timestamps
 only to choose which nearby camera frames to retain.
+
+## Complete successful oracle capture analysed (2026-10-04)
+
+The complete capture `%TEMP%\psvr2-toolkit-optical-7164` and simultaneous
+`../sense-research/steamvr-succes-2.pcapng.gz` were analysed locally. See
+`../analysis/sony-oracle-20261004/capture-summary.md` for validation, all-stream
+statistics, qualified interpretations, reproducible commands and the next experiment.
+No raw captures or Sony proprietary payloads are included in the analysis directory.
+
+### Instrumentation side correction
+
+This capture predates a corrected semantic CSV label: the research hook indexes
+right as 0 and left as 1. The writer had reversed those labels. The writer now emits
+R for index 0 and L for index 1. The original capture remains unchanged; analysis
+uses an explicit `--correct-reversed-ground-truth-side` switch and retains the
+original label. Do not apply this switch to post-fix captures.
+
+### Directly observed scheduling and tracking facts
+
+- The full ETW scan accepts 7,325 CRC-valid A2/31 and 12,474 CRC-valid A1/31 reports;
+  A2/31 spans 102.771457 seconds.
+- BROAD/phase 2 uses period 42 and led0 values 04, 05, 06, 0a, 0c, 0d, 0e **and ff**;
+  led1..led3 remain ff. PRESCAN/phase 1 uses period 40. Numeric phases 0 and 5 also
+  appear; phases 3/4 do not occur in this capture.
+- Initial right-pose validity is acquired during PRESCAN, approximately 3.012 s
+  before the first BROAD command.
+- Four completed BROAD episodes last 10.001–10.020 s before returning to PRESCAN.
+  The right pose remains valid at all four transitions. Two brief pose-validity
+  losses (0.802 and 1.696 s) recover within BROAD, without an intervening PRESCAN.
+  These observations do not establish the cause of the periodic transitions.
+- Matched physical LED IDs/masks vary within a setting. Across repeated settings,
+  both 06 and 0e are associated with all 17 physical IDs somewhere in the run.
+  Published pose validity can remain true when no LED is semantically matched.
+  A literal 17-bit bitmap interpretation is not established by these observations.
+
+### Directly observed IF8 wire structure and VI alignment
+
+All 6,206 captured IF8/0x89 payloads are 36,944 bytes. Repeated wire structure is:
+
+```
+64-byte header
+4 sections, each:
+    little-endian u32 populated-record count
+    256 record slots × 36 bytes
+```
+
+The four sections start at payload offsets `64 + section*9220`. All slots after
+that section's populated count are zero in every packet. All 117,423 populated
+records have u16 fields at record offsets 4/6 and 8/10 forming ordered pairs in
+0..508. These are observable coordinate-like fields; their exact geometric and
+other record-field semantics remain under investigation. Counts range from 0 to
+13 across sections in this capture.
+
+The header starts with `LD`; its little-endian u32 at offset 4 equals payload
+length. A u32 at offset 8 advances predominantly by 16,683/16,684 per packet.
+The u32 at offset 20 usually advances by one; four jumps leave 129 missing counter
+positions. All 240 saved VI rows have an IF8 record with an equal counter.
+Same-counter IF8 and VI device timestamps are not equal: IF8 minus VI is
++9.841..+11.839 ms (median +11.6125 ms). This documents counter/timestamp
+relationships, not identical exposure times.
+
+When semantic camera rows are associated to the nearest IF8 host timestamp, all
+64,032 matched Sony blob indices are valid zero-based indices in the same-numbered
+IF8 section. Same-numbered section counts best correlate with each camera's
+semantic match count among sections and packet lags -3..+3 tested. This is evidence
+for camera/record correspondence; exact callback-to-USB frame identity and physical
+camera ordering still require validation. IF8 records also exist without controller
+matches, so detector records must not be assumed to inherently encode physical LED IDs.
+
+### Timing and imagery limitations
+
+The 104 QPC/Unix clock pairs fit with 0.166 ms RMS residual and 0.837 ms maximum
+absolute residual. This is host-clock alignment accuracy, not USB/Bluetooth
+transport or exposure latency. Use the affine clock fit, and retain join distances.
+
+All 240 VI files validate, but they contain only 230 distinct frames and hit the
+capture cap after 71.037 s. They cannot supply same-frame imagery for the entire
+102 s semantic trace. All available pre/post pairs were compared as raw byte lanes.
+No lit LED or physical LED-to-VI-region assignment is confidently established from
+those sheets. A lane is not yet a validated intensity plane or named camera view.
+IF8 candidate-coordinate diagrams are not evidence that emitters are visually
+identifiable in the saved VI images.
+
+Feature: Sense A2/31 scheduling and externally observable IF8/VI relationships
+Source of knowledge: Sony Windows driver used as a behavioural oracle; Bluetooth
+ETW and raw USB data, plus permitted semantic 17-LED output labels
+Method: complete streamed packet analysis, affine clock fit, per-setting statistics,
+wire counter comparison and semantic label/index correlation
+Observed protocol/behaviour: the directly observed facts above
+Implementation provenance: independently written local analysis of captured I/O;
+no private tracker layout/algorithm or Sony machine-code inspection used, and no
+Monado implementation or proprietary model/geometry data transferred

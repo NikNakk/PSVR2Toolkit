@@ -35,25 +35,30 @@ class Record:
     payload: bytes
 
 
+def iter_records(path: Path):
+    """Stream validated local wrappers, retaining only one USB payload."""
+    with path.open("rb") as f:
+        while True:
+            offset = f.tell()
+            header = f.read(HEADER.size)
+            if not header:
+                return
+            if len(header) != HEADER.size:
+                raise ValueError(f"truncated ULD8 header at {offset:#x}")
+            magic, version, interface, pipe, host_us, size = HEADER.unpack(header)
+            if magic != MAGIC or version != 1:
+                raise ValueError(f"invalid ULD8 wrapper at {offset:#x}")
+            if size > 16 * 1024 * 1024:
+                raise ValueError(f"implausible payload size {size} at {offset:#x}")
+            payload = f.read(size)
+            if len(payload) != size:
+                raise ValueError(f"truncated ULD8 payload at {offset:#x}")
+            yield Record(host_us, interface, pipe, payload)
+
+
 def load_records(path: Path) -> list[Record]:
-    raw = path.read_bytes()
-    pos = 0
-    records: list[Record] = []
-    while pos + HEADER.size <= len(raw):
-        magic, version, interface, pipe, host_us, size = HEADER.unpack_from(raw, pos)
-        pos += HEADER.size
-        if magic != MAGIC:
-            raise ValueError(f"bad ULD8 magic at offset {pos - HEADER.size:#x}: {magic:#x}")
-        if version != 1:
-            raise ValueError(f"unsupported ULD8 version {version}")
-        if pos + size > len(raw):
-            raise ValueError("truncated ULD8 payload")
-        payload = raw[pos : pos + size]
-        pos += size
-        records.append(Record(host_us, interface, pipe, payload))
-    if pos != len(raw):
-        raise ValueError(f"{len(raw)-pos} trailing bytes")
-    return records
+    """Compatibility helper; whole-capture callers should use iter_records."""
+    return list(iter_records(path))
 
 
 def median(values):
@@ -140,30 +145,58 @@ def main() -> None:
     ap.add_argument("--scan-header-bytes", type=int, default=512)
     args = ap.parse_args()
 
-    records = load_records(args.capture)
-    if not records:
-        raise SystemExit("No ULD8 records found")
-
+    records = []
     sizes = {}
-    for r in records:
+    count = 0
+    first_us = last_us = None
+    all_dts = []
+    interfaces, pipes = set(), set()
+    changes = minima = maxima = seen = previous = None
+    for r in iter_records(args.capture):
+        count += 1
         sizes[len(r.payload)] = sizes.get(len(r.payload), 0) + 1
+        interfaces.add(r.interface)
+        pipes.add(r.pipe)
+        if first_us is None:
+            first_us = r.host_us
+        if last_us is not None:
+            all_dts.append(r.host_us - last_us)
+        last_us = r.host_us
+        if len(records) < 1000:
+            records.append(Record(r.host_us, r.interface, r.pipe, r.payload[:args.scan_header_bytes + 4]))
+        if args.byte_stats:
+            if previous is None:
+                changes = [0] * len(r.payload)
+                minima, maxima = list(r.payload), list(r.payload)
+                seen = [0] * len(r.payload)
+            if len(r.payload) != len(changes):
+                raise ValueError("full byte statistics require constant payload length")
+            for i, v in enumerate(r.payload):
+                changes[i] += previous is not None and previous[i] != v
+                minima[i] = min(minima[i], v)
+                maxima[i] = max(maxima[i], v)
+                seen[i] |= 1 << v
+            previous = r.payload
+    if not count:
+        raise SystemExit("No ULD8 records found")
+    dts = all_dts
+    span_s = (last_us - first_us) / 1_000_000
 
-    dts = [b.host_us - a.host_us for a, b in zip(records, records[1:]) if b.host_us > a.host_us]
-    span_s = (records[-1].host_us - records[0].host_us) / 1_000_000
-
-    print(f"records: {len(records)}")
-    print(f"interfaces: {sorted(set(r.interface for r in records))}")
-    print(f"pipes: {[hex(x) for x in sorted(set(r.pipe for r in records))]}")
+    print(f"records: {count}")
+    print(f"interfaces: {sorted(interfaces)}")
+    print(f"pipes: {[hex(x) for x in sorted(pipes)]}")
     print(f"payload sizes: {sizes}")
     print(f"span: {span_s:.6f} s")
     if span_s > 0:
-        print(f"mean rate: {(len(records)-1)/span_s:.3f} Hz")
+        print(f"mean rate: {(count-1)/span_s:.3f} Hz")
     if dts:
         print(f"median interval: {median(dts):.3f} us")
 
-    stats = byte_stats(records)
+    stats = ([{"offset": i, "unique": seen[i].bit_count(), "changes": changes[i],
+               "change_fraction": changes[i] / max(count - 1, 1), "min": minima[i], "max": maxima[i]}
+              for i in range(len(changes))] if args.byte_stats else byte_stats(records))
     hottest = sorted(stats, key=lambda x: (x["change_fraction"], x["unique"]), reverse=True)[:32]
-    print("\nMost frequently changing byte offsets:")
+    print("\nMost frequently changing byte offsets (whole stream with --byte-stats; otherwise first 1000 header samples):")
     for s in hottest:
         print(
             f"  {s['offset']:5d} / 0x{s['offset']:04x}: "

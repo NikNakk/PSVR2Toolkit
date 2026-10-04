@@ -49,8 +49,61 @@ def enhanced_packets(blob: bytes):
         off += block_len
 
 
-def reports(blob: bytes):
-    for capture_ts_us, packet in enhanced_packets(blob):
+def stream_enhanced_packets(path: Path, audit=None):
+    """Validate every block and honour IDB timestamp resolution/offset (little endian)."""
+    audit = audit if audit is not None else Counter()
+    opener = gzip.open if path.suffix.lower() == ".gz" else open
+    interfaces = []
+    with opener(path, "rb") as f:
+        while True:
+            off = f.tell()
+            h = f.read(8)
+            if not h:
+                return
+            if len(h) != 8:
+                raise ValueError(f"truncated pcapng header at {off}")
+            typ, length = struct.unpack("<II", h)
+            if length < 12 or length % 4 or length > 64 * 1024 * 1024:
+                raise ValueError(f"invalid pcapng block length at {off}")
+            body = f.read(length - 8)
+            if len(body) != length - 8 or struct.unpack_from("<I", body, len(body)-4)[0] != length:
+                raise ValueError(f"truncated/mismatched pcapng block at {off}")
+            audit["blocks"] += 1
+            if typ == 0x0a0d0d0a:
+                if body[:4] != b"\x4d\x3c\x2b\x1a":
+                    raise ValueError("only little-endian pcapng sections supported")
+                interfaces = []
+            elif typ == 1:
+                link, _, snap = struct.unpack_from("<HHI", body)
+                resolution, offset = 1e-6, 0
+                pos = 8
+                while pos + 4 <= len(body)-4:
+                    code, size = struct.unpack_from("<HH", body, pos)
+                    pos += 4
+                    value = body[pos:pos+size]
+                    if code == 9 and size == 1:
+                        resolution = (2 ** -(value[0] & 127)) if value[0] & 128 else 10 ** -value[0]
+                    if code == 14 and size == 8:
+                        offset = struct.unpack("<q", value)[0]
+                    pos += (size + 3) & ~3
+                    if code == 0:
+                        break
+                interfaces.append((link, resolution, offset))
+                audit[f"linktype_{link}"] += 1
+            elif typ == PCAPNG_EPB:
+                iface, hi, lo, cap, original = struct.unpack_from("<IIIII", body)
+                if cap > len(body)-24 or iface >= len(interfaces):
+                    raise ValueError(f"invalid EPB at {off}")
+                audit["enhanced_packets"] += 1
+                audit["truncated_packets"] += cap < original
+                _, resolution, offset = interfaces[iface]
+                ts = round((((hi << 32) | lo) * resolution + offset) * 1e6)
+                yield ts, body[20:20+cap]
+
+
+def reports(blob: bytes | Path):
+    packets = stream_enhanced_packets(blob) if isinstance(blob, Path) else enhanced_packets(blob)
+    for capture_ts_us, packet in packets:
         start = 0
         while True:
             pos = packet.find(b"\xa2\x31", start)
@@ -131,7 +184,7 @@ def main():
     ap.add_argument("--runs-csv", type=Path, help="write schedule-setting runs as CSV")
     args = ap.parse_args()
 
-    rows = list(reports(read_capture(args.capture)))
+    rows = list(reports(args.capture))
     if not rows:
         raise SystemExit("No CRC-valid A2/31 reports found")
 

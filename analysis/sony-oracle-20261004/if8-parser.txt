@@ -1,0 +1,48 @@
+records: 6206
+interfaces: [8]
+pipes: ['0x89']
+payload sizes: {36944: 6206}
+span: 105.575014 s
+mean rate: 58.773 Hz
+median interval: 16684.000 us
+
+Most frequently changing byte offsets (whole stream with --byte-stats; otherwise first 1000 header samples):
+      8 / 0x0008: change=1.000 unique=256 range=00-ff
+      9 / 0x0009: change=1.000 unique=256 range=00-ff
+     20 / 0x0014: change=1.000 unique=256 range=00-ff
+     84 / 0x0054: change=0.806 unique=243 range=00-ff
+    100 / 0x0064: change=0.805 unique=243 range=00-ff
+     96 / 0x0060: change=0.804 unique=246 range=00-ff
+     92 / 0x005c: change=0.804 unique=237 range=00-ff
+     80 / 0x0050: change=0.803 unique=240 range=00-fe
+     88 / 0x0058: change=0.802 unique=244 range=00-ff
+    128 / 0x0080: change=0.772 unique=225 range=00-fe
+    116 / 0x0074: change=0.772 unique=223 range=00-ff
+    120 / 0x0078: change=0.772 unique=214 range=00-ff
+    136 / 0x0088: change=0.768 unique=226 range=00-ff
+    132 / 0x0084: change=0.766 unique=224 range=00-fe
+    124 / 0x007c: change=0.766 unique=217 range=00-ff
+    129 / 0x0081: change=0.764 unique=122 range=00-e5
+    107 / 0x006b: change=0.762 unique=30 range=00-4d
+    137 / 0x0089: change=0.761 unique=153 range=00-ff
+    133 / 0x0085: change=0.759 unique=92 range=00-f0
+    125 / 0x007d: change=0.739 unique=51 range=00-6f
+    101 / 0x0065: change=0.738 unique=130 range=00-ff
+     70 / 0x0046: change=0.738 unique=26 range=00-ff
+    121 / 0x0079: change=0.736 unique=45 range=00-5f
+     97 / 0x0061: change=0.731 unique=108 range=00-ff
+     71 / 0x0047: change=0.730 unique=35 range=00-6e
+     89 / 0x0059: change=0.726 unique=59 range=00-65
+     93 / 0x005d: change=0.714 unique=119 range=00-fa
+     85 / 0x0055: change=0.710 unique=52 range=00-61
+     81 / 0x0051: change=0.669 unique=18 range=00-14
+    117 / 0x0075: change=0.667 unique=15 range=00-15
+     76 / 0x004c: change=0.630 unique=112 range=00-be
+     72 / 0x0048: change=0.608 unique=79 range=00-71
+
+Likely u32 counter/timestamp fields in packet header:
+  offset   18 / 0x0012: scale=3.92878125 units/us median_error=0.0075 first=66126332 last=131990012
+  offset   19 / 0x0013: scale=0.0153468018 units/us median_error=0.0075 first=258305 last=515585
+  offset    8 / 0x0008: scale=1.0001199 units/us median_error=0.0076 first=22283232 last=39049724
+  offset    7 / 0x0007: scale=256.030692 units/us median_error=0.0076 first=1409540096 last=1406794752
+  offset    9 / 0x0009: scale=0.0039043729 units/us median_error=0.0081 first=87043 last=152537

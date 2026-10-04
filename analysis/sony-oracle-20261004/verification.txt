@@ -1,0 +1,4 @@
+Complete output reconciliation passed: 7,325 A2/31; 23,968 semantic rows; 5,992 semantic frames; 6,206 IF8 packets; 240 VI rows.
+117,423 candidate records validated; 64,032 matched labels in corresponding zero-based index bounds; 129 absent hardware counter positions.
+Four synthetic parser tests passed; five analysis/parser scripts compiled; git diff --check passed.
+Native driver was not built or run after the instrumentation label fix.

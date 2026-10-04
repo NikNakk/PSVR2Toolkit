@@ -250,7 +250,7 @@ writer_main(CaptureState *s)
                            static_cast<std::streamsize>(usbItem.bytes.size()));
     } else if (haveGroundTruth && s->ledGroundTruth) {
       s->ledGroundTruth << groundTruthItem.hostTimestampUs << ',' << groundTruthItem.frameIndex << ','
-                        << (groundTruthItem.controllerIdx == 0 ? 'L' : 'R') << ','
+                        << (groundTruthItem.controllerIdx == 0 ? 'R' : 'L') << ','
                         << static_cast<unsigned>(groundTruthItem.cameraIndex) << ",0x"
                         << std::hex << groundTruthItem.assignedMask << ",0x" << groundTruthItem.matchedMask
                         << std::dec;

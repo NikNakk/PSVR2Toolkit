@@ -1,0 +1,86 @@
+{
+  "clock": {
+    "qpc_origin_us": 402861483041,
+    "unix_origin_us": 1791120384445109,
+    "slope": 1.0000006660223153,
+    "offset_us": -217.79136539041542,
+    "rms_us": 166.24981188527465,
+    "max_abs_us": 837.2978799492121,
+    "residual_p95_abs_us": 215.96393583947028,
+    "pairs": 104
+  },
+  "bluetooth": {
+    "blocks": 92249,
+    "linktype_290": 1,
+    "enhanced_packets": 92247,
+    "truncated_packets": 0,
+    "0xa1": 12483,
+    "0xa2": 7336,
+    "0xa1_crc_rejected_candidate": 2,
+    "0xa2_crc_rejected_candidate": 6,
+    "0xa1_short_candidate": 7,
+    "0xa2_short_candidate": 5,
+    "valid_a131": 12474,
+    "valid_a231": 7325
+  },
+  "corrected_ground_truth_rows": 23968,
+  "ground_truth_original_sides": {
+    "L": 23968
+  },
+  "ground_truth_cameras": {
+    "0": 5992,
+    "1": 5992,
+    "2": 5992,
+    "3": 5992
+  },
+  "ground_truth_frame_gaps": {
+    "1": 5991
+  },
+  "ground_truth_mask_out_of_range": 0,
+  "vi_errors": [],
+  "orphan_vi_files": [],
+  "unique_vi_sequences": 230,
+  "unique_vi_payloads": 230,
+  "if8_interfaces": {
+    "(8, 137)": 6206
+  },
+  "if8_unique_payloads": 6206,
+  "if8_bytes": 229398584,
+  "if8_zero_offsets": 35433,
+  "if8_constant_offsets": 35453,
+  "vi_pairs": 34,
+  "representative_events": [
+    46,
+    57,
+    60,
+    75,
+    78
+  ],
+  "log_observations": [
+    "Sun Oct 04 2026 14:26:19.827 [Info] - playstation_vr2: [Sony Optical Capture] capturing semantic 17-LED ground-truth outputs...",
+    "Sun Oct 04 2026 14:26:24.396 [Info] - playstation_vr2: [Sony Optical Capture] directory=C:\\Users\\nickl\\AppData\\Local\\Temp\\psvr2-toolkit-optical-7164 camera-only clean-room capture: 2 pre + 3 post frames/event, maxCameraFrames=240 with ~1 Hz periodic samples (background writer); observable IF8/0x89 LED-detector USB capture capped at 256 MiB",
+    "Sun Oct 04 2026 14:26:36.581 [Info] - playstation_vr2: [SceVrTracker2][controller]Tracker dropped frames!!! 3 times in 10s, total 42 frames. pid:7164, profile:PC"
+  ],
+  "join_abs_us": {
+    "pose_dt_us": {
+      "median": 578.5,
+      "p95": 1214.0,
+      "max": 13842.0
+    },
+    "vi_dt_us": {
+      "median": 312997.0,
+      "p95": 27545423.8,
+      "max": 32533450.0
+    },
+    "if8_dt_us": {
+      "median": 1341.0,
+      "p95": 2416.649999999998,
+      "max": 6990.0
+    },
+    "event_dt_us": {
+      "median": 249377.0,
+      "p95": 483478.69999999995,
+      "max": 849716.0
+    }
+  }
+}

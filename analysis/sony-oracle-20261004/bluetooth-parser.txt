@@ -1,0 +1,115 @@
+valid A2/31 reports: 7325
+capture span: 102.771457 s
+mean report rate: 71.265 Hz
+phase counts:
+  phase 0: 14 (period 0: 5, period 40: 9)
+  phase 1: 4091 (period 40: 4091)
+  phase 2: 3199 (period 42: 3199)
+  phase 5: 21 (period 0: 21)
+BROAD/BG LED tuples:
+  0e ff ff ff: 1462
+  06 ff ff ff: 587
+  0c ff ff ff: 530
+  0a ff ff ff: 261
+  ff ff ff ff: 133
+  05 ff ff ff: 85
+  0d ff ff ff: 74
+  04 ff ff ff: 67
+schedule setting runs: 97
+  2026-10-04T13:26:26.179978+00:00 phase=0 seq=0 period=0 pos=0 len=0 leds=00 00 00 00 reports=1 duration=0.000s
+  2026-10-04T13:26:26.279891+00:00 phase=5 seq=0 period=0 pos=0 len=50050050 leds=ff ff ff ff reports=21 duration=0.291s
+  2026-10-04T13:26:26.579983+00:00 phase=0 seq=0 period=40 pos=0 len=50050050 leds=ff ff ff ff reports=9 duration=0.104s
+  2026-10-04T13:26:26.698698+00:00 phase=1 seq=0 period=40 pos=0 len=50050050 leds=ff ff ff ff reports=37 duration=0.480s
+  2026-10-04T13:26:27.186477+00:00 phase=1 seq=1 period=40 pos=315657849 len=50050050 leds=ff ff ff ff reports=78 duration=0.997s
+  2026-10-04T13:26:28.191211+00:00 phase=1 seq=2 period=40 pos=318711183 len=50050050 leds=ff ff ff ff reports=77 duration=0.990s
+  2026-10-04T13:26:29.196205+00:00 phase=1 seq=3 period=40 pos=321714084 len=50050050 leds=ff ff ff ff reports=78 duration=0.990s
+  2026-10-04T13:26:30.201178+00:00 phase=1 seq=4 period=40 pos=324716880 len=50050050 leds=ff ff ff ff reports=78 duration=0.997s
+  2026-10-04T13:26:31.206201+00:00 phase=1 seq=5 period=40 pos=327719679 len=50050050 leds=ff ff ff ff reports=78 duration=0.997s
+  2026-10-04T13:26:32.211157+00:00 phase=1 seq=6 period=40 pos=330773037 len=50050050 leds=ff ff ff ff reports=78 duration=0.997s
+  2026-10-04T13:26:33.216160+00:00 phase=1 seq=7 period=40 pos=333776391 len=50050050 leds=ff ff ff ff reports=77 duration=0.997s
+  2026-10-04T13:26:34.221056+00:00 phase=1 seq=8 period=40 pos=336779523 len=50050050 leds=ff ff ff ff reports=76 duration=0.998s
+  2026-10-04T13:26:35.222190+00:00 phase=1 seq=9 period=40 pos=339782721 len=50050050 leds=ff ff ff ff reports=76 duration=0.986s
+  2026-10-04T13:26:36.223564+00:00 phase=1 seq=10 period=40 pos=342785871 len=50050050 leds=ff ff ff ff reports=77 duration=0.990s
+  2026-10-04T13:26:37.228679+00:00 phase=1 seq=11 period=40 pos=345788598 len=50050050 leds=ff ff ff ff reports=76 duration=0.990s
+  2026-10-04T13:26:38.233555+00:00 phase=1 seq=12 period=40 pos=348841407 len=50050050 leds=ff ff ff ff reports=76 duration=0.990s
+  2026-10-04T13:26:39.238726+00:00 phase=1 seq=13 period=40 pos=351844395 len=50050050 leds=ff ff ff ff reports=77 duration=0.990s
+  2026-10-04T13:26:40.243786+00:00 phase=1 seq=14 period=40 pos=354847485 len=50050050 leds=ff ff ff ff reports=76 duration=0.990s
+  2026-10-04T13:26:41.248912+00:00 phase=1 seq=15 period=40 pos=357850512 len=50050050 leds=ff ff ff ff reports=77 duration=0.997s
+  2026-10-04T13:26:42.255586+00:00 phase=1 seq=16 period=40 pos=360903036 len=50050050 leds=ff ff ff ff reports=77 duration=0.988s
+  2026-10-04T13:26:43.258845+00:00 phase=1 seq=17 period=40 pos=363905808 len=50050050 leds=ff ff ff ff reports=77 duration=0.998s
+  2026-10-04T13:26:44.271423+00:00 phase=1 seq=18 period=40 pos=366908808 len=50050050 leds=ff ff ff ff reports=77 duration=0.997s
+  2026-10-04T13:26:45.276916+00:00 phase=1 seq=19 period=40 pos=369961602 len=50050050 leds=ff ff ff ff reports=75 duration=0.997s
+  2026-10-04T13:26:46.281354+00:00 phase=1 seq=20 period=40 pos=372965142 len=50050050 leds=ff ff ff ff reports=77 duration=0.997s
+  2026-10-04T13:26:47.286196+00:00 phase=1 seq=21 period=40 pos=375968034 len=50050050 leds=ff ff ff ff reports=75 duration=0.990s
+  2026-10-04T13:26:48.291209+00:00 phase=1 seq=22 period=40 pos=378970872 len=50050050 leds=ff ff ff ff reports=74 duration=0.990s
+  2026-10-04T13:26:49.296247+00:00 phase=1 seq=23 period=40 pos=382023681 len=50050050 leds=ff ff ff ff reports=77 duration=0.997s
+  2026-10-04T13:26:50.300946+00:00 phase=1 seq=24 period=40 pos=385026543 len=50050050 leds=ff ff ff ff reports=76 duration=0.997s
+  2026-10-04T13:26:51.305863+00:00 phase=1 seq=25 period=40 pos=388030350 len=50050050 leds=ff ff ff ff reports=76 duration=0.997s
+  2026-10-04T13:26:52.310787+00:00 phase=1 seq=26 period=40 pos=388931565 len=50050050 leds=ff ff ff ff reports=77 duration=0.997s
+  2026-10-04T13:26:53.315743+00:00 phase=1 seq=27 period=40 pos=394086987 len=50050050 leds=ff ff ff ff reports=77 duration=0.998s
+  2026-10-04T13:26:54.320823+00:00 phase=1 seq=28 period=40 pos=397089576 len=50050050 leds=ff ff ff ff reports=77 duration=0.997s
+  2026-10-04T13:26:55.324020+00:00 phase=1 seq=29 period=40 pos=400092507 len=50050050 leds=ff ff ff ff reports=76 duration=0.999s
+  2026-10-04T13:26:56.330713+00:00 phase=1 seq=30 period=40 pos=403095849 len=50050050 leds=ff ff ff ff reports=76 duration=0.990s
+  2026-10-04T13:26:57.335693+00:00 phase=1 seq=31 period=40 pos=406149012 len=50050050 leds=ff ff ff ff reports=78 duration=0.998s
+  2026-10-04T13:26:58.340728+00:00 phase=1 seq=32 period=40 pos=409151598 len=50050050 leds=ff ff ff ff reports=76 duration=0.998s
+  2026-10-04T13:26:59.345638+00:00 phase=1 seq=33 period=40 pos=412154781 len=50050050 leds=ff ff ff ff reports=78 duration=0.990s
+  2026-10-04T13:27:00.350634+00:00 phase=1 seq=34 period=40 pos=415157694 len=50050050 leds=ff ff ff ff reports=78 duration=0.990s
+  2026-10-04T13:27:01.355685+00:00 phase=1 seq=35 period=40 pos=418160337 len=50050050 leds=ff ff ff ff reports=79 duration=0.997s
+  2026-10-04T13:27:02.360630+00:00 phase=1 seq=36 period=40 pos=421213332 len=50050050 leds=ff ff ff ff reports=75 duration=0.998s
+  2026-10-04T13:27:03.365585+00:00 phase=1 seq=37 period=40 pos=423415740 len=50050050 leds=ff ff ff ff reports=77 duration=0.998s
+  2026-10-04T13:27:04.370528+00:00 phase=1 seq=38 period=40 pos=427219689 len=50050050 leds=ff ff ff ff reports=75 duration=0.990s
+  2026-10-04T13:27:05.373464+00:00 phase=1 seq=39 period=40 pos=430222920 len=50050050 leds=ff ff ff ff reports=76 duration=0.985s
+  2026-10-04T13:27:06.374247+00:00 phase=1 seq=40 period=40 pos=433225452 len=50050050 leds=ff ff ff ff reports=81 duration=0.996s
+  2026-10-04T13:27:07.385521+00:00 phase=1 seq=41 period=40 pos=436277880 len=50050050 leds=ff ff ff ff reports=52 duration=0.660s
+  2026-10-04T13:27:08.060490+00:00 phase=2 seq=42 period=42 pos=0 len=50050050 leds=ff ff ff ff reports=11 duration=0.128s
+  2026-10-04T13:27:08.203020+00:00 phase=2 seq=43 period=42 pos=0 len=50050050 leds=06 ff ff ff reports=64 duration=0.849s
+  2026-10-04T13:27:09.066749+00:00 phase=2 seq=44 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=78 duration=0.993s
+  2026-10-04T13:27:10.070442+00:00 phase=2 seq=45 period=42 pos=0 len=50050050 leds=0c ff ff ff reports=64 duration=0.990s
+  2026-10-04T13:27:11.083002+00:00 phase=2 seq=46 period=42 pos=0 len=50050050 leds=04 ff ff ff reports=67 duration=0.975s
+  2026-10-04T13:27:12.072966+00:00 phase=2 seq=47 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=68 duration=0.969s
+  2026-10-04T13:27:13.071450+00:00 phase=2 seq=48 period=42 pos=0 len=50050050 leds=06 ff ff ff reports=73 duration=0.989s
+  2026-10-04T13:27:14.076790+00:00 phase=2 seq=49 period=42 pos=0 len=50050050 leds=0a ff ff ff reports=50 duration=0.981s
+  2026-10-04T13:27:15.074079+00:00 phase=2 seq=50 period=42 pos=0 len=50050050 leds=0c ff ff ff reports=71 duration=0.996s
+  2026-10-04T13:27:16.078602+00:00 phase=2 seq=51 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=75 duration=0.990s
+  2026-10-04T13:27:17.099143+00:00 phase=2 seq=52 period=42 pos=0 len=50050050 leds=0c ff ff ff reports=45 duration=0.944s
+  2026-10-04T13:27:18.061060+00:00 phase=1 seq=53 period=40 pos=468309177 len=50050050 leds=ff ff ff ff reports=72 duration=0.988s
+  2026-10-04T13:27:19.062803+00:00 phase=1 seq=54 period=40 pos=471312132 len=50050050 leds=ff ff ff ff reports=73 duration=0.997s
+  2026-10-04T13:27:20.097774+00:00 phase=1 seq=55 period=40 pos=474415134 len=50050050 leds=ff ff ff ff reports=75 duration=0.968s
+  2026-10-04T13:27:21.080198+00:00 phase=2 seq=56 period=42 pos=0 len=50050050 leds=ff ff ff ff reports=18 duration=0.204s
+  2026-10-04T13:27:21.298869+00:00 phase=2 seq=57 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=11 duration=0.794s
+  2026-10-04T13:27:22.118676+00:00 phase=2 seq=58 period=42 pos=0 len=50050050 leds=06 ff ff ff reports=87 duration=1.872s
+  2026-10-04T13:27:24.005159+00:00 phase=2 seq=59 period=42 pos=0 len=50050050 leds=0c ff ff ff reports=75 duration=1.088s
+  2026-10-04T13:27:25.107691+00:00 phase=2 seq=60 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=149 duration=1.987s
+  2026-10-04T13:27:27.103743+00:00 phase=2 seq=61 period=42 pos=0 len=50050050 leds=05 ff ff ff reports=85 duration=1.109s
+  2026-10-04T13:27:28.228667+00:00 phase=2 seq=62 period=42 pos=0 len=50050050 leds=06 ff ff ff reports=64 duration=0.862s
+  2026-10-04T13:27:29.105446+00:00 phase=2 seq=63 period=42 pos=0 len=50050050 leds=0a ff ff ff reports=76 duration=0.991s
+  2026-10-04T13:27:30.110122+00:00 phase=2 seq=64 period=42 pos=0 len=50050050 leds=0c ff ff ff reports=76 duration=0.967s
+  2026-10-04T13:27:31.092499+00:00 phase=1 seq=65 period=40 pos=507397494 len=50050050 leds=ff ff ff ff reports=77 duration=0.998s
+  2026-10-04T13:27:32.105412+00:00 phase=1 seq=66 period=40 pos=510450519 len=50050050 leds=ff ff ff ff reports=78 duration=0.998s
+  2026-10-04T13:27:33.108972+00:00 phase=1 seq=67 period=40 pos=513453492 len=50050050 leds=ff ff ff ff reports=79 duration=0.984s
+  2026-10-04T13:27:34.107486+00:00 phase=2 seq=68 period=42 pos=0 len=50050050 leds=ff ff ff ff reports=29 duration=0.345s
+  2026-10-04T13:27:34.467450+00:00 phase=2 seq=69 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=52 duration=0.653s
+  2026-10-04T13:27:35.133911+00:00 phase=2 seq=70 period=42 pos=0 len=50050050 leds=06 ff ff ff reports=95 duration=1.201s
+  2026-10-04T13:27:36.350005+00:00 phase=2 seq=71 period=42 pos=0 len=50050050 leds=0c ff ff ff reports=57 duration=0.766s
+  2026-10-04T13:27:37.131092+00:00 phase=2 seq=72 period=42 pos=0 len=50050050 leds=0a ff ff ff reports=68 duration=0.989s
+  2026-10-04T13:27:38.127526+00:00 phase=2 seq=73 period=42 pos=0 len=50050050 leds=06 ff ff ff reports=61 duration=0.947s
+  2026-10-04T13:27:39.169905+00:00 phase=2 seq=74 period=42 pos=0 len=50050050 leds=0c ff ff ff reports=67 duration=0.945s
+  2026-10-04T13:27:40.129830+00:00 phase=2 seq=75 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=127 duration=1.987s
+  2026-10-04T13:27:42.132372+00:00 phase=2 seq=76 period=42 pos=0 len=50050050 leds=0a ff ff ff reports=67 duration=0.997s
+  2026-10-04T13:27:43.145329+00:00 phase=2 seq=77 period=42 pos=0 len=50050050 leds=0d ff ff ff reports=74 duration=0.967s
+  2026-10-04T13:27:44.127290+00:00 phase=1 seq=78 period=40 pos=546486009 len=50050050 leds=ff ff ff ff reports=78 duration=0.997s
+  2026-10-04T13:27:45.139785+00:00 phase=1 seq=79 period=40 pos=549539043 len=50050050 leds=ff ff ff ff reports=76 duration=0.997s
+  2026-10-04T13:27:46.152226+00:00 phase=1 seq=80 period=40 pos=552592056 len=50050050 leds=ff ff ff ff reports=76 duration=0.990s
+  2026-10-04T13:27:47.158405+00:00 phase=1 seq=81 period=40 pos=555595071 len=50050050 leds=ff ff ff ff reports=66 duration=0.876s
+  2026-10-04T13:27:48.051089+00:00 phase=2 seq=82 period=42 pos=0 len=50050050 leds=ff ff ff ff reports=1 duration=0.000s
+  2026-10-04T13:27:48.071505+00:00 phase=2 seq=83 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=59 duration=0.982s
+  2026-10-04T13:27:49.054680+00:00 phase=2 seq=84 period=42 pos=0 len=50050050 leds=0c ff ff ff reports=75 duration=1.996s
+  2026-10-04T13:27:51.064656+00:00 phase=2 seq=85 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=191 duration=2.806s
+  2026-10-04T13:27:53.892177+00:00 phase=2 seq=86 period=42 pos=0 len=50050050 leds=06 ff ff ff reports=143 duration=2.153s
+  2026-10-04T13:27:56.067013+00:00 phase=2 seq=87 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=134 duration=1.973s
+  2026-10-04T13:27:58.056399+00:00 phase=1 seq=88 period=40 pos=588277128 len=50050050 leds=ff ff ff ff reports=64 duration=0.988s
+  2026-10-04T13:27:59.074573+00:00 phase=1 seq=89 period=40 pos=591330141 len=50050050 leds=ff ff ff ff reports=47 duration=0.990s
+  2026-10-04T13:28:00.079512+00:00 phase=1 seq=90 period=40 pos=594333084 len=50050050 leds=ff ff ff ff reports=69 duration=0.975s
+  2026-10-04T13:28:01.069429+00:00 phase=2 seq=91 period=42 pos=0 len=50050050 leds=ff ff ff ff reports=74 duration=0.983s
+  2026-10-04T13:28:02.067057+00:00 phase=2 seq=92 period=42 pos=0 len=50050050 leds=0e ff ff ff reports=518 duration=6.862s
+  2026-10-04T13:28:08.945106+00:00 phase=0 seq=0 period=0 pos=0 len=0 leds=00 00 00 00 reports=4 duration=0.006s
