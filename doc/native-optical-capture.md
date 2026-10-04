@@ -32,6 +32,8 @@ It writes left/right 8-bit PGM images beside each .vi11 file. The useful image w
 
 Do not assume the four-byte Sony leds[] field is a literal 32-bit physical-LED mask. In the successful trace only the first byte changed (01, 03, 06, 07, 0a, 0c, 0e, and others) even though Sense has 17 model LEDs. The raw frames plus Sony's 17-LED association table are intended to establish what that field means physically.
 
+Monado's 17-LED controller model was also extracted from Sony's PC driver and uses IDs 0..16. Sony's optical working set contains exactly 17 LED-to-blob entries per camera. The obvious hypothesis is that these are the same IDs/order; do not assume it silently, but the capture should let us verify it directly against the decoded camera spots and Monado's known 3D LED coordinates.
+
 ## Analyse Bluetooth ETW capture
 
     py scripts\\analyze_sony_sense_etw_pcap.py steamvr-success.pcapng.gz
