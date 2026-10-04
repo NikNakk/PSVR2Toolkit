@@ -464,10 +464,13 @@ void HmdDeviceCamera::SetUserBit(CameraUser user, bool enable) {
       Util::DriverLog("[Camera Trace] CaesarManager imageThread unavailable; camera control command not sent.");
     } else {
       uint16_t subcmd = 1;
+      const uint8_t imageInterface = singleton->imageThread->GetInterface();
+      const uint8_t imageEndpoint = singleton->imageThread->GetEndpoint();
       int result = singleton->imageThread->ControlCommand(true, 0xb, data, 8, 0, 0, subcmd);
-      Util::DriverLog("[Camera Trace] camera {} control command result={} imageThreadState={} lastError=0x{:08x}",
-                      newCameraShouldBeOn ? "ON" : "OFF", result, singleton->imageThread->m_state,
-                      singleton->imageThread->m_lastError);
+      Util::DriverLog(
+          "[Camera Trace] camera {} control command result={} imageThread=0x{:x} if={} ep=0x{:02x} state={} lastError=0x{:08x}",
+          newCameraShouldBeOn ? "ON" : "OFF", result, reinterpret_cast<uint64_t>(singleton->imageThread),
+          imageInterface, imageEndpoint, singleton->imageThread->m_state, singleton->imageThread->m_lastError);
     }
   }
 }
