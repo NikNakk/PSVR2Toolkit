@@ -12,7 +12,7 @@ That makes before/after LED changes spatially inspectable without assuming
 that the payload is BC4 or naming the lanes/cameras prematurely.
 
 Usage:
-  py scripts/extract_psvr2_vi_lanes.py camera-0001-event-0001-rel-m01-set-11-ts-123.vi11
+  py scripts/extract_psvr2_vi_lanes.py camera-0001-event-0001-rel-m01-set-11-ts-123.vi
   py scripts/extract_psvr2_vi_lanes.py capture-dir
 """
 
@@ -103,9 +103,9 @@ def main() -> None:
     ap.add_argument("input", type=Path)
     args = ap.parse_args()
 
-    paths = sorted(args.input.glob("*.vi11")) if args.input.is_dir() else [args.input]
+    paths = sorted(args.input.glob("*.vi")) if args.input.is_dir() else [args.input]
     if not paths:
-        raise SystemExit("No .vi11 captures found")
+        raise SystemExit("No .vi captures found")
     for path in paths:
         extract(path)
 
