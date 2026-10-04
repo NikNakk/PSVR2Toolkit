@@ -33,6 +33,8 @@ add_library(psvr2_openvr_driver_ex SHARED
   hmd_driver_loader.cpp
   hmd_device_camera.cpp
   sense_controller.cpp
+  sony_optical_capture.h
+  sony_optical_capture.cpp
   trigger_effect_manager.cpp
   usb_thread_gaze.cpp
 )
