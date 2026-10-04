@@ -16,8 +16,6 @@ public:
 
   static void CaptureTrackingImage(const void *imageData, size_t imageSize, uint32_t imageTimestamp,
                                    uint16_t imageType);
-  static void CaptureOpticalData(uint32_t controllerIdx, uint64_t frameIndex, const void *controllerData,
-                                 size_t controllerDataSize);
 };
 
 } // namespace psvr2_toolkit
