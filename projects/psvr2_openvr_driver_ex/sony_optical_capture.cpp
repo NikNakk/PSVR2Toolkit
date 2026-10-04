@@ -56,6 +56,20 @@ state()
   return s;
 }
 
+uint64_t
+host_timestamp_us()
+{
+  static LARGE_INTEGER frequency = {};
+  if (frequency.QuadPart == 0) {
+    QueryPerformanceFrequency(&frequency);
+  }
+
+  LARGE_INTEGER now = {};
+  QueryPerformanceCounter(&now);
+  return static_cast<uint64_t>(
+      (static_cast<double>(now.QuadPart) / static_cast<double>(frequency.QuadPart)) * 1e6);
+}
+
 std::string
 hex_bytes(const void *data, size_t size)
 {
@@ -182,7 +196,7 @@ record_event(bool isLeft,
   initialize_if_needed();
   CaptureState &s = state();
   const uint64_t id = new_event_id();
-  const uint64_t hostUs = GetHostTimestamp();
+  const uint64_t hostUs = host_timestamp_us();
 
   std::lock_guard<std::mutex> lock(s.mutex);
 
@@ -265,7 +279,7 @@ SonyOpticalCapture::CaptureTrackingImage(const void *imageData,
   initialize_if_needed();
 
   FrameSnapshot current;
-  current.hostTimestampUs = GetHostTimestamp();
+  current.hostTimestampUs = host_timestamp_us();
   current.imageTimestamp = imageTimestamp;
   current.imageType = imageType;
   const auto *bytes = static_cast<const uint8_t *>(imageData);
