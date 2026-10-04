@@ -142,7 +142,7 @@ def main() -> None:
     summary_path = out_dir / "regions.csv"
 
     fields = [
-        "event_id", "kind", "side", "payload_hex", "lane", "region_rank",
+        "event_id", "kind", "side", "detail", "lane", "region_rank",
         "area", "centroid_x", "centroid_y", "min_x", "min_y", "max_x", "max_y",
         "peak", "mean_change", "pre_file", "post_file",
     ]
@@ -176,7 +176,7 @@ def main() -> None:
                         "event_id": event_id,
                         "kind": event.get("kind", ""),
                         "side": event.get("side", ""),
-                        "payload_hex": event.get("payload_hex", ""),
+                        "detail": event.get("detail", ""),
                         "lane": lane,
                         "region_rank": rank,
                         **region,
