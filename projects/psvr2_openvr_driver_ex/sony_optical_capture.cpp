@@ -98,6 +98,7 @@ struct CaptureState {
   std::ofstream frames;
   std::ofstream poses;
   std::ofstream clockSync;
+  std::ofstream ledGroundTruth;
   std::ofstream ledDetector;
 
   std::mutex mutex;
@@ -246,6 +247,7 @@ initialize_if_needed()
       s.frames.open(s.directory / "camera_frames.csv", std::ios::out | std::ios::trunc);
       s.poses.open(s.directory / "poses.csv", std::ios::out | std::ios::trunc);
       s.clockSync.open(s.directory / "clock_sync.csv", std::ios::out | std::ios::trunc);
+      s.ledGroundTruth.open(s.directory / "sony_led_ground_truth.csv", std::ios::out | std::ios::trunc);
       s.ledDetector.open(s.directory / "usb-if8-led-detector.bin",
                          std::ios::out | std::ios::binary | std::ios::trunc);
 
@@ -258,6 +260,9 @@ initialize_if_needed()
       }
       if (s.clockSync) {
         s.clockSync << "qpc_us,unix_us\n";
+      }
+      if (s.ledGroundTruth) {
+        s.ledGroundTruth << "host_us,frame_index,side,camera,led_id,blob_index,matched\n";
       }
       if (s.poses) {
         s.poses
@@ -522,6 +527,32 @@ SonyOpticalCapture::CapturePublishedPose(const char *deviceLabel,
           << pose.qDriverFromHeadRotation.y << ',' << pose.qDriverFromHeadRotation.z << ','
           << pose.vecDriverFromHeadTranslation[0] << ',' << pose.vecDriverFromHeadTranslation[1] << ','
           << pose.vecDriverFromHeadTranslation[2] << "\n";
+}
+
+void
+SonyOpticalCapture::CaptureLedGroundTruth(uint32_t controllerIdx,
+                                         uint64_t frameIndex,
+                                         uint8_t cameraIndex,
+                                         uint8_t ledId,
+                                         int16_t blobIndex,
+                                         bool matched)
+{
+  if (!Enabled() || controllerIdx >= 2 || cameraIndex >= 4 || ledId >= 17) {
+    return;
+  }
+
+  initialize_if_needed();
+  CaptureState &s = state();
+  const uint64_t hostUs = host_timestamp_us();
+
+  std::lock_guard<std::mutex> lock(s.mutex);
+  if (!s.ledGroundTruth) {
+    return;
+  }
+
+  s.ledGroundTruth << hostUs << ',' << frameIndex << ',' << (controllerIdx == 0 ? 'L' : 'R') << ','
+                   << static_cast<unsigned>(cameraIndex) << ',' << static_cast<unsigned>(ledId) << ','
+                   << blobIndex << ',' << (matched ? 1 : 0) << "\n";
 }
 
 void
