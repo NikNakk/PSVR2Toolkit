@@ -49,6 +49,17 @@ All commands are logged. Camera frames are triggered only for commands that can 
 (`SET_SYNC_PHASE` and `SET_LEDS_IMMEDIATE`) plus tracking-state transitions. Periodic command type 6 and timing-only
 adjustments remain in the CSV but do not consume the image budget.
 
+### poses.csv
+
+Records the HMD and Sense poses that Sony publishes through the standard OpenVR
+`IVRServerDriverHost::TrackedDevicePoseUpdated` interface, before Toolkit applies any controller compatibility
+transform. It includes position/orientation, velocity, tracking result, pose time offset, and the published
+world/driver/head transforms.
+
+This is useful for a clean-room replacement of the current experimental LED geometry: stereo camera observations can
+be paired with the externally published HMD/controller relative pose and the independently obtained camera calibration
+to estimate emitter positions.
+
 ### camera_frames.csv and camera-*.vi11
 
 Toolkit keeps a rolling two-frame history of the observable type-11 USB camera stream. For each interesting event it
@@ -144,6 +155,6 @@ The static periods are important: image differencing then isolates emitter chang
 
 ## Non-interference
 
-The camera copy happens after Sony's normal image poll has completed. The new code does not replace Sony's controller
-output, pose solver or camera processing. It observes the same camera USB payload Sony receives and uses event timestamps
-only to choose which nearby frames to retain.
+The camera copy happens after Sony's normal image poll has completed. The new code does not replace Sony's controller output, pose solver or camera processing. It observes the same camera
+USB payload Sony receives, the poses Sony publishes through OpenVR, and uses event timestamps only to choose which nearby
+frames to retain.
