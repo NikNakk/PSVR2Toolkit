@@ -267,10 +267,7 @@ void LogSonyLedCommand(LibpadLedSync *ledSync, LedCommand *ledCommand, uint8_t c
     return;
   }
 
-  SonyOpticalCapture::NoteLedCommand(
-      isLeft, ledCommand, commandSize, ledSync ? ledSync->phase : 0xff, ledSync ? ledSync->seq : 0xff,
-      ledSync ? ledSync->period : 0xff, ledSync ? ledSync->baseTime : 0,
-      ledSync ? ledSync->frameCycle : 0);
+  SonyOpticalCapture::NoteLedCommand(isLeft, ledCommand, commandSize);
 
   switch (ledCommand->type) {
   case CommandType::SET_SYNC_PHASE: {
@@ -744,7 +741,6 @@ void logDeviceTrackingStateHook(void *session, int32_t deviceType, uint64_t time
     const int oldFlag = lastTrackingFlag[controller].exchange(newFlag);
     if (oldFlag != newFlag) {
       Util::DriverLog("[Sony Tracking][{}] flag {} -> {} (tracking={})", controller == 0 ? 'L' : 'R', oldFlag, newFlag, isTracking ? 1 : 0);
-      SonyOpticalCapture::NoteTracking(controller == 0, oldFlag, newFlag);
     }
 
     senseController.SetIsTracking(isTracking, GetHostTimestamp());
