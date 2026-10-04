@@ -28,11 +28,34 @@ constexpr uint32_t kMaxCameraFrames = 160;
 constexpr size_t kMaxQueuedUsbPackets = 512;
 constexpr uint64_t kMaxLedDetectorBytes = 256ULL * 1024ULL * 1024ULL;
 
+#pragma pack(push, 1)
+struct ObservableCameraHeader {
+  char magic[2];
+  uint16_t version;
+  uint32_t packetSize;
+  uint32_t vtsUs;
+  uint32_t sequenceId;
+  uint16_t cameraSet;
+  uint16_t imageHeight;
+  uint16_t activeHeight;
+  uint16_t imageWidth;
+  uint16_t activeWidth;
+  uint16_t unknown2;
+};
+#pragma pack(pop)
+
+static_assert(sizeof(ObservableCameraHeader) == 28, "Unexpected observable camera header size");
+
 struct FrameSnapshot {
   std::vector<uint8_t> bytes;
   uint64_t hostTimestampUs = 0;
   uint32_t imageTimestamp = 0;
-  uint16_t imageType = 0;
+  uint16_t cameraSet = 0;
+  uint32_t sequenceId = 0;
+  uint16_t imageHeight = 0;
+  uint16_t activeHeight = 0;
+  uint16_t imageWidth = 0;
+  uint16_t activeWidth = 0;
 };
 
 struct QueuedFrame {
@@ -226,7 +249,8 @@ initialize_if_needed()
         s.events << "host_us,event_id,kind,side,current_phase,current_seq,current_period,base_time,frame_cycle,payload_hex\n";
       }
       if (s.frames) {
-        s.frames << "host_us,capture_index,event_id,relative_frame,image_timestamp,image_type,size,filename\n";
+        s.frames << "host_us,capture_index,event_id,relative_frame,vts_us,sequence_id,camera_set,"
+                    "image_width,image_height,active_width,active_height,size,filename\n";
       }
       if (s.poses) {
         s.poses
@@ -267,7 +291,8 @@ queue_frame_locked(CaptureState &s, const FrameSnapshot &frame, uint64_t eventId
   std::ostringstream filename;
   filename << "camera-" << std::setfill('0') << std::setw(4) << captureIndex << "-event-" << std::setw(4)
            << eventId << "-rel-" << (relativeFrame >= 0 ? "p" : "m") << std::setw(2)
-           << (relativeFrame >= 0 ? relativeFrame : -relativeFrame) << "-ts-" << frame.imageTimestamp << ".vi11";
+           << (relativeFrame >= 0 ? relativeFrame : -relativeFrame) << "-set-" << frame.cameraSet
+           << "-ts-" << frame.imageTimestamp << ".vi11";
 
   QueuedFrame queued;
   queued.frame = frame; // Memory copy only on the Sony/camera callback; disk I/O is done by writer_main.
@@ -408,7 +433,25 @@ SonyOpticalCapture::CaptureTrackingImage(const void *imageData,
   FrameSnapshot &current = s.history[s.historyNext];
   current.hostTimestampUs = host_timestamp_us();
   current.imageTimestamp = imageTimestamp;
-  current.imageType = imageType;
+  current.cameraSet = imageType;
+  current.sequenceId = 0;
+  current.imageHeight = 0;
+  current.activeHeight = 0;
+  current.imageWidth = 0;
+  current.activeWidth = 0;
+  if (imageSize >= sizeof(ObservableCameraHeader)) {
+    ObservableCameraHeader header = {};
+    std::memcpy(&header, bytes, sizeof(header));
+    if (header.magic[0] == 'V' && header.magic[1] == 'I') {
+      current.imageTimestamp = header.vtsUs;
+      current.sequenceId = header.sequenceId;
+      current.cameraSet = header.cameraSet;
+      current.imageHeight = header.imageHeight;
+      current.activeHeight = header.activeHeight;
+      current.imageWidth = header.imageWidth;
+      current.activeWidth = header.activeWidth;
+    }
+  }
   current.bytes.resize(imageSize);
   std::memcpy(current.bytes.data(), bytes, imageSize);
 
