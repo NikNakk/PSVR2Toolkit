@@ -1,58 +1,51 @@
 #include "sony_optical_capture.h"
 
-#include "sense_controller.h"
 #include "util.h"
 #include "vr_settings.h"
 
-#include <algorithm>
+#include <array>
 #include <atomic>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <vector>
 #include <windows.h>
 
 namespace psvr2_toolkit {
 namespace {
 
-constexpr uint32_t kFramesPerEvent = 3;
-constexpr uint32_t kMaxCameraFrames = 96;
-constexpr uint64_t kMaxOpticalBytes = 256ULL * 1024ULL * 1024ULL;
-constexpr size_t kControllerOpticalBytes = 0x5A44;
-constexpr size_t kCameraStride = 0x1688;
-constexpr size_t kLedMapOffset = 0x1438;
-constexpr size_t kBlobBaseOffset = 0x40;
-constexpr size_t kBlobStride = 0x14;
-constexpr int kLedCount = 17;
+constexpr uint32_t kPreFramesPerEvent = 2;
+constexpr uint32_t kPostFramesPerEvent = 3;
+constexpr uint32_t kMaxCameraFrames = 160;
 
-#pragma pack(push, 1)
-struct OpticalRecordHeader {
-  uint32_t magic; // 'SOPT'
-  uint16_t version;
-  uint16_t controller;
-  uint64_t hostTimestampUs;
-  uint64_t frameIndex;
-  uint32_t payloadSize;
-  uint32_t reserved;
+struct FrameSnapshot {
+  std::vector<uint8_t> bytes;
+  uint64_t hostTimestampUs = 0;
+  uint32_t imageTimestamp = 0;
+  uint16_t imageType = 0;
 };
-#pragma pack(pop)
 
 struct CaptureState {
   std::once_flag initOnce;
   std::filesystem::path directory;
   std::ofstream events;
   std::ofstream frames;
-  std::ofstream opticalSummary;
-  std::ofstream opticalRaw[2];
   std::mutex mutex;
+
   std::atomic<uint64_t> eventId{0};
-  std::atomic<uint64_t> currentEventId{0};
-  std::atomic<uint32_t> framesRemaining{0};
+
+  std::array<FrameSnapshot, kPreFramesPerEvent> history;
+  size_t historyCount = 0;
+  size_t historyNext = 0;
+
+  uint64_t activeEventId = 0;
+  uint32_t postFramesRemaining = 0;
+  int32_t nextPostRelativeIndex = 1;
+
   uint32_t cameraFramesWritten = 0;
-  uint64_t opticalBytesWritten[2] = {0, 0};
 };
 
 CaptureState &
@@ -65,6 +58,10 @@ state()
 std::string
 hex_bytes(const void *data, size_t size)
 {
+  if (data == nullptr || size == 0) {
+    return {};
+  }
+
   const auto *bytes = static_cast<const uint8_t *>(data);
   std::ostringstream out;
   out << std::hex << std::setfill('0');
@@ -89,43 +86,116 @@ initialize_if_needed()
 
       s.events.open(s.directory / "events.csv", std::ios::out | std::ios::trunc);
       s.frames.open(s.directory / "camera_frames.csv", std::ios::out | std::ios::trunc);
-      s.opticalSummary.open(s.directory / "optical_summary.csv", std::ios::out | std::ios::trunc);
-      s.opticalRaw[0].open(s.directory / "optical-L.bin", std::ios::out | std::ios::binary | std::ios::trunc);
-      s.opticalRaw[1].open(s.directory / "optical-R.bin", std::ios::out | std::ios::binary | std::ios::trunc);
 
       if (s.events) {
         s.events << "host_us,event_id,kind,side,current_phase,current_seq,current_period,base_time,frame_cycle,payload_hex\n";
       }
       if (s.frames) {
-        s.frames << "host_us,capture_index,event_id,image_timestamp,image_type,size,filename\n";
-      }
-      if (s.opticalSummary) {
-        s.opticalSummary << "host_us,frame_index,side,camera,assigned_led_mask,matched_led_mask,matched_count\n";
+        s.frames << "host_us,capture_index,event_id,relative_frame,image_timestamp,image_type,size,filename\n";
       }
 
-      Util::DriverLog("[Sony Optical Capture] directory={} maxCameraFrames={} maxOpticalMiBPerController={}",
-                      s.directory.string(), kMaxCameraFrames, kMaxOpticalBytes / (1024 * 1024));
+      Util::DriverLog(
+          "[Sony Optical Capture] directory={} camera-only clean-room capture: {} pre + {} post frames/event, "
+          "maxCameraFrames={}",
+          s.directory.string(), kPreFramesPerEvent, kPostFramesPerEvent, kMaxCameraFrames);
     } catch (const std::exception &e) {
       Util::DriverLog("[Sony Optical Capture] initialization failed: {}", e.what());
     }
   });
 }
 
-void
-arm_camera_frames(uint64_t eventId)
-{
-  CaptureState &s = state();
-  s.currentEventId.store(eventId);
-  uint32_t existing = s.framesRemaining.load();
-  while (existing < kFramesPerEvent &&
-         !s.framesRemaining.compare_exchange_weak(existing, kFramesPerEvent)) {
-  }
-}
-
 uint64_t
 new_event_id()
 {
   return state().eventId.fetch_add(1) + 1;
+}
+
+void
+write_frame_locked(CaptureState &s, const FrameSnapshot &frame, uint64_t eventId, int32_t relativeFrame)
+{
+  if (s.cameraFramesWritten >= kMaxCameraFrames || s.directory.empty() || frame.bytes.empty()) {
+    return;
+  }
+
+  const uint32_t captureIndex = ++s.cameraFramesWritten;
+
+  std::ostringstream filename;
+  filename << "camera-" << std::setfill('0') << std::setw(4) << captureIndex << "-event-" << std::setw(4)
+           << eventId << "-rel-" << (relativeFrame >= 0 ? "p" : "m") << std::setw(2)
+           << (relativeFrame >= 0 ? relativeFrame : -relativeFrame) << "-ts-" << frame.imageTimestamp << ".vi11";
+
+  const std::filesystem::path path = s.directory / filename.str();
+  std::ofstream out(path, std::ios::out | std::ios::binary | std::ios::trunc);
+  if (!out) {
+    return;
+  }
+
+  out.write(reinterpret_cast<const char *>(frame.bytes.data()),
+            static_cast<std::streamsize>(frame.bytes.size()));
+  out.close();
+
+  if (s.frames) {
+    s.frames << frame.hostTimestampUs << ',' << captureIndex << ',' << eventId << ',' << relativeFrame << ','
+             << frame.imageTimestamp << ',' << frame.imageType << ',' << frame.bytes.size() << ','
+             << filename.str() << "\n";
+    s.frames.flush();
+  }
+}
+
+void
+arm_camera_event_locked(CaptureState &s, uint64_t eventId)
+{
+  /*
+   * Dump the two frames immediately preceding the event, oldest first.
+   * historyNext points at the slot that will be overwritten next.
+   */
+  if (s.historyCount > 0) {
+    const size_t count = s.historyCount;
+    const size_t oldest =
+        s.historyCount == kPreFramesPerEvent ? s.historyNext : 0;
+
+    for (size_t i = 0; i < count; ++i) {
+      const size_t idx = (oldest + i) % kPreFramesPerEvent;
+      const int32_t relative = -static_cast<int32_t>(count - i);
+      write_frame_locked(s, s.history[idx], eventId, relative);
+    }
+  }
+
+  s.activeEventId = eventId;
+  s.postFramesRemaining = kPostFramesPerEvent;
+  s.nextPostRelativeIndex = 1;
+}
+
+void
+record_event(bool isLeft,
+             const char *kind,
+             const void *payload,
+             size_t payloadSize,
+             uint8_t currentPhase,
+             uint8_t currentSequence,
+             uint8_t currentPeriod,
+             int32_t baseTime,
+             uint32_t frameCycle,
+             bool captureFrames)
+{
+  initialize_if_needed();
+  CaptureState &s = state();
+  const uint64_t id = new_event_id();
+  const uint64_t hostUs = GetHostTimestamp();
+
+  std::lock_guard<std::mutex> lock(s.mutex);
+
+  if (captureFrames) {
+    arm_camera_event_locked(s, id);
+  }
+
+  if (s.events) {
+    s.events << hostUs << ',' << id << ',' << kind << ',' << (isLeft ? 'L' : 'R') << ','
+             << static_cast<unsigned>(currentPhase) << ',' << static_cast<unsigned>(currentSequence) << ','
+             << static_cast<unsigned>(currentPeriod) << ',' << baseTime << ',' << frameCycle << ",\""
+             << hex_bytes(payload, payloadSize) << "\"\n";
+    s.events.flush();
+  }
 }
 
 } // namespace
@@ -152,34 +222,19 @@ SonyOpticalCapture::NoteLedCommand(bool isLeft,
   if (!Enabled()) {
     return;
   }
-  initialize_if_needed();
-  CaptureState &s = state();
-  const uint64_t id = new_event_id();
-  const uint64_t hostUs = GetHostTimestamp();
 
-  // Command 6 is a ~1 Hz Sony maintenance command and would otherwise consume the bounded camera-frame budget
-  // during long PRESCAN intervals. Keep every command in events.csv, but save images only around state/timing
-  // mutations that can change what the cameras see.
   const auto *rawCommand = static_cast<const uint8_t *>(command);
   const uint8_t commandType = commandSize > 0 && rawCommand ? rawCommand[0] : 0xff;
-  const bool visuallyInteresting =
-      commandType == 1 || // SET_SYNC_PHASE
-      commandType == 2 || // SET_LEDS_IMMEDIATE
-      commandType == 3 || // ADJUST_FRAME_CYCLE
-      commandType == 4 || // ADJUST_BASE_TIME
-      commandType == 5;   // ADJUST_TIME_AND_CYCLE
-  if (visuallyInteresting) {
-    arm_camera_frames(id);
-  }
 
-  std::lock_guard<std::mutex> lock(s.mutex);
-  if (s.events) {
-    s.events << hostUs << ',' << id << ",led," << (isLeft ? 'L' : 'R') << ','
-             << static_cast<unsigned>(currentPhase) << ',' << static_cast<unsigned>(currentSequence) << ','
-             << static_cast<unsigned>(currentPeriod) << ',' << baseTime << ',' << frameCycle << ",\""
-             << hex_bytes(command, commandSize) << "\"\n";
-    s.events.flush();
-  }
+  /*
+   * Save before/after frames only for commands that can visibly change the illumination pattern:
+   * SET_SYNC_PHASE (1) and SET_LEDS_IMMEDIATE (2). Timing-only changes and the ~1 Hz maintenance
+   * command remain in events.csv but do not consume the bounded frame budget.
+   */
+  const bool captureFrames = commandType == 1 || commandType == 2;
+
+  record_event(isLeft, "led", command, commandSize, currentPhase, currentSequence, currentPeriod, baseTime,
+               frameCycle, captureFrames);
 }
 
 void
@@ -188,18 +243,12 @@ SonyOpticalCapture::NoteTracking(bool isLeft, int oldFlag, int newFlag)
   if (!Enabled()) {
     return;
   }
-  initialize_if_needed();
-  CaptureState &s = state();
-  const uint64_t id = new_event_id();
-  const uint64_t hostUs = GetHostTimestamp();
-  arm_camera_frames(id);
 
-  std::lock_guard<std::mutex> lock(s.mutex);
-  if (s.events) {
-    s.events << hostUs << ',' << id << ",tracking," << (isLeft ? 'L' : 'R')
-             << ",,,,,,\"flag " << oldFlag << " -> " << newFlag << "\"\n";
-    s.events.flush();
-  }
+  std::ostringstream payload;
+  payload << "flag " << oldFlag << " -> " << newFlag;
+  const std::string text = payload.str();
+
+  record_event(isLeft, "tracking", text.data(), text.size(), 0xff, 0xff, 0xff, 0, 0, true);
 }
 
 void
@@ -212,113 +261,27 @@ SonyOpticalCapture::CaptureTrackingImage(const void *imageData,
     return;
   }
 
-  CaptureState &s = state();
-  uint32_t remaining = s.framesRemaining.load();
-  while (remaining > 0 && !s.framesRemaining.compare_exchange_weak(remaining, remaining - 1)) {
-  }
-  if (remaining == 0) {
-    return;
-  }
-
   initialize_if_needed();
-  std::lock_guard<std::mutex> lock(s.mutex);
-  if (s.cameraFramesWritten >= kMaxCameraFrames || s.directory.empty()) {
-    return;
-  }
 
-  const uint64_t eventId = s.currentEventId.load();
-  const uint64_t hostUs = GetHostTimestamp();
-  const uint32_t captureIndex = ++s.cameraFramesWritten;
+  FrameSnapshot current;
+  current.hostTimestampUs = GetHostTimestamp();
+  current.imageTimestamp = imageTimestamp;
+  current.imageType = imageType;
+  const auto *bytes = static_cast<const uint8_t *>(imageData);
+  current.bytes.assign(bytes, bytes + imageSize);
 
-  std::ostringstream filename;
-  filename << "camera-" << std::setfill('0') << std::setw(4) << captureIndex << "-event-" << std::setw(4)
-           << eventId << "-ts-" << imageTimestamp << ".vi11";
-
-  const std::filesystem::path path = s.directory / filename.str();
-  std::ofstream out(path, std::ios::out | std::ios::binary | std::ios::trunc);
-  if (out) {
-    out.write(static_cast<const char *>(imageData), static_cast<std::streamsize>(imageSize));
-    out.close();
-    if (s.frames) {
-      s.frames << hostUs << ',' << captureIndex << ',' << eventId << ',' << imageTimestamp << ',' << imageType
-               << ',' << imageSize << ',' << filename.str() << "\n";
-      s.frames.flush();
-    }
-  }
-}
-
-void
-SonyOpticalCapture::CaptureOpticalData(uint32_t controllerIdx,
-                                       uint64_t frameIndex,
-                                       const void *controllerData,
-                                       size_t controllerDataSize)
-{
-  if (!Enabled() || controllerIdx >= 2 || controllerData == nullptr ||
-      controllerDataSize < kControllerOpticalBytes) {
-    return;
-  }
-
-  initialize_if_needed();
   CaptureState &s = state();
   std::lock_guard<std::mutex> lock(s.mutex);
 
-  const uint64_t recordBytes = sizeof(OpticalRecordHeader) + kControllerOpticalBytes;
-  if (s.opticalBytesWritten[controllerIdx] + recordBytes > kMaxOpticalBytes) {
-    return;
+  if (s.postFramesRemaining > 0 && s.activeEventId != 0) {
+    write_frame_locked(s, current, s.activeEventId, s.nextPostRelativeIndex);
+    --s.postFramesRemaining;
+    ++s.nextPostRelativeIndex;
   }
 
-  const uint64_t hostUs = GetHostTimestamp();
-  OpticalRecordHeader header = {};
-  header.magic = 0x54504f53; // SOPT on little-endian Windows
-  header.version = 1;
-  header.controller = static_cast<uint16_t>(controllerIdx);
-  header.hostTimestampUs = hostUs;
-  header.frameIndex = frameIndex;
-  header.payloadSize = static_cast<uint32_t>(kControllerOpticalBytes);
-
-  if (s.opticalRaw[controllerIdx]) {
-    s.opticalRaw[controllerIdx].write(reinterpret_cast<const char *>(&header), sizeof(header));
-    s.opticalRaw[controllerIdx].write(static_cast<const char *>(controllerData),
-                                      static_cast<std::streamsize>(kControllerOpticalBytes));
-    s.opticalBytesWritten[controllerIdx] += recordBytes;
-  }
-
-  if (!s.opticalSummary) {
-    return;
-  }
-
-  const auto *bytes = static_cast<const uint8_t *>(controllerData);
-  for (int cam = 0; cam < 4; ++cam) {
-    const uint8_t *camData = bytes + cam * kCameraStride;
-    uint32_t assignedMask = 0;
-    uint32_t matchedMask = 0;
-    uint32_t matchedCount = 0;
-
-    for (int ledId = 0; ledId < kLedCount; ++ledId) {
-      int16_t blobIndex = 0;
-      std::memcpy(&blobIndex, camData + kLedMapOffset + ledId * sizeof(int16_t), sizeof(blobIndex));
-      if (blobIndex < 0) {
-        continue;
-      }
-      assignedMask |= (1u << ledId);
-
-      const size_t blobOffset = kBlobBaseOffset + static_cast<size_t>(blobIndex) * kBlobStride;
-      if (blobOffset + 10 > kLedMapOffset) {
-        continue;
-      }
-
-      int16_t isMatched = 0;
-      std::memcpy(&isMatched, camData + blobOffset + 8, sizeof(isMatched));
-      if (isMatched == 1) {
-        matchedMask |= (1u << ledId);
-        ++matchedCount;
-      }
-    }
-
-    s.opticalSummary << hostUs << ',' << frameIndex << ',' << (controllerIdx == 0 ? 'L' : 'R') << ',' << cam
-                     << ",0x" << std::hex << assignedMask << ",0x" << matchedMask << std::dec << ',' << matchedCount
-                     << "\n";
-  }
+  s.history[s.historyNext] = std::move(current);
+  s.historyNext = (s.historyNext + 1) % kPreFramesPerEvent;
+  s.historyCount = std::min(s.historyCount + 1, static_cast<size_t>(kPreFramesPerEvent));
 }
 
 } // namespace psvr2_toolkit
