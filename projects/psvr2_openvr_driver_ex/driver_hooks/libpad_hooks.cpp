@@ -3,6 +3,7 @@
 #include "hmd_driver_loader.h"
 #include "hook_lib.h"
 #include "sense_controller.h"
+#include "sony_optical_capture.h"
 #include "util.h"
 #include "vr_settings.h"
 
@@ -182,7 +183,14 @@ void OpticalProcessor__processHook(void *pContext, void *pOpticalData) {
     g_controllerLedCount[controllerIdx] = currentLedCount;
     g_opticalFrameIndex[controllerIdx]++;
   }
+
   OpticalProcessor__process(pContext, pOpticalData);
+
+  if (controllerIdx < 2 && SonyOpticalCapture::Enabled()) {
+    uint8_t *pControllerData = reinterpret_cast<uint8_t *>(pOpticalData) + (controllerIdx * 0x5A44);
+    SonyOpticalCapture::CaptureOpticalData(controllerIdx, g_opticalFrameIndex[controllerIdx].load(), pControllerData,
+                                           0x5A44);
+  }
 }
 
 uint32_t libpad_hostToDeviceHook(LibpadTimeSync *timeSync, uint32_t host, uint32_t *outDevice) {
@@ -265,6 +273,11 @@ void LogSonyLedCommand(LibpadLedSync *ledSync, LedCommand *ledCommand, uint8_t c
     return;
   }
 
+  SonyOpticalCapture::NoteLedCommand(
+      isLeft, ledCommand, commandSize, ledSync ? ledSync->phase : 0xff, ledSync ? ledSync->seq : 0xff,
+      ledSync ? ledSync->period : 0xff, ledSync ? ledSync->baseTime : 0,
+      ledSync ? ledSync->frameCycle : 0);
+
   switch (ledCommand->type) {
   case CommandType::SET_SYNC_PHASE: {
     const auto &sync = ledCommand->payload.syncPhase;
@@ -305,10 +318,15 @@ void LogSonyLedCommand(LibpadLedSync *ledSync, LedCommand *ledCommand, uint8_t c
     Util::DriverLog("[Sony LED][{}] {} subCommand={} payload={} size={}", controller, LedCommandTypeName(ledCommand->type),
                     ledCommand->payload.sysControl.subCommand, ledCommand->payload.sysControl.subCommandPayload, commandSize);
     break;
-  default:
-    Util::DriverLog("[Sony LED][{}] command={}({}) size={}", controller, static_cast<uint8_t>(ledCommand->type), LedCommandTypeName(ledCommand->type),
-                    commandSize);
+  default: {
+    const auto *raw = reinterpret_cast<const uint8_t *>(ledCommand);
+    const uint8_t payload0 = commandSize > 1 ? raw[1] : 0;
+    const uint8_t payload1 = commandSize > 2 ? raw[2] : 0;
+    Util::DriverLog("[Sony LED][{}] command={}({}) size={} payload=[{:#04x},{:#04x}]", controller,
+                    static_cast<uint8_t>(ledCommand->type), LedCommandTypeName(ledCommand->type), commandSize,
+                    payload0, payload1);
     break;
+  }
   }
 }
 
@@ -732,6 +750,7 @@ void logDeviceTrackingStateHook(void *session, int32_t deviceType, uint64_t time
     const int oldFlag = lastTrackingFlag[controller].exchange(newFlag);
     if (oldFlag != newFlag) {
       Util::DriverLog("[Sony Tracking][{}] flag {} -> {} (tracking={})", controller == 0 ? 'L' : 'R', oldFlag, newFlag, isTracking ? 1 : 0);
+      SonyOpticalCapture::NoteTracking(controller == 0, oldFlag, newFlag);
     }
 
     senseController.SetIsTracking(isTracking, GetHostTimestamp());
@@ -1079,6 +1098,12 @@ void LibpadHooks::InstallHooks() {
 
     HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x161520), reinterpret_cast<void *>(logDeviceTrackingStateHook),
                          reinterpret_cast<void **>(&logDeviceTrackingState));
+
+    if (SonyOpticalCapture::Enabled()) {
+      Util::DriverLog("[Sony Optical Capture] installing passive OpticalProcessor trace hook...");
+      HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x1999F0), reinterpret_cast<void *>(OpticalProcessor__processHook),
+                           reinterpret_cast<void **>(&OpticalProcessor__process));
+    }
   }
 
   if (VRSettings::GetBool(STEAMVR_SETTINGS_USE_ENHANCED_HAPTICS, SETTING_USE_ENHANCED_HAPTICS_DEFAULT_VALUE)) {
