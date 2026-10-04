@@ -185,6 +185,47 @@ void OpticalProcessor__processHook(void *pContext, void *pOpticalData) {
   }
 
   OpticalProcessor__process(pContext, pOpticalData);
+
+  /*
+   * Research instrumentation only. The revised AGENTS.md permits Sony's 17-LED optical OUTPUTS
+   * as behavioural ground truth. Convert the private working memory into semantic labels here,
+   * but do not expose/copy the private structure into Monado.
+   */
+  if (controllerIdx < 2 && SonyOpticalCapture::Enabled()) {
+    uint8_t *pControllerData = reinterpret_cast<uint8_t *>(pOpticalData) + (controllerIdx * 0x5A44);
+    const uint64_t frameIndex = g_opticalFrameIndex[controllerIdx].load();
+
+    for (int cam = 0; cam < 4; ++cam) {
+      uint8_t *pCamData = pControllerData + (cam * 0x1688);
+      int16_t blobIndices[17] = {};
+      uint32_t assignedMask = 0;
+      uint32_t matchedMask = 0;
+
+      for (int ledId = 0; ledId < 17; ++ledId) {
+        const int16_t blobIndex =
+            *reinterpret_cast<int16_t *>(pCamData + 0x1438 + (ledId * 2));
+        blobIndices[ledId] = blobIndex;
+        if (blobIndex < 0) {
+          continue;
+        }
+
+        assignedMask |= (1u << ledId);
+        const size_t blobOffset = 0x40 + (static_cast<size_t>(blobIndex) * 0x14);
+        if (blobOffset + 10 > 0x1438) {
+          continue;
+        }
+
+        int16_t isMatched = 0;
+        std::memcpy(&isMatched, pCamData + blobOffset + 8, sizeof(isMatched));
+        if (isMatched == 1) {
+          matchedMask |= (1u << ledId);
+        }
+      }
+
+      SonyOpticalCapture::CaptureLedGroundTruth(
+          controllerIdx, frameIndex, static_cast<uint8_t>(cam), assignedMask, matchedMask, blobIndices);
+    }
+  }
 }
 
 uint32_t libpad_hostToDeviceHook(LibpadTimeSync *timeSync, uint32_t host, uint32_t *outDevice) {
@@ -1088,6 +1129,13 @@ void LibpadHooks::InstallHooks() {
 
     HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x161520), reinterpret_cast<void *>(logDeviceTrackingStateHook),
                          reinterpret_cast<void **>(&logDeviceTrackingState));
+
+    if (SonyOpticalCapture::Enabled()) {
+      Util::DriverLog("[Sony Optical Capture] capturing semantic 17-LED ground-truth outputs...");
+      HookLib::InstallHook(reinterpret_cast<void *>(baseAddress + 0x1999F0),
+                           reinterpret_cast<void *>(OpticalProcessor__processHook),
+                           reinterpret_cast<void **>(&OpticalProcessor__process));
+    }
   }
 
   if (VRSettings::GetBool(STEAMVR_SETTINGS_USE_ENHANCED_HAPTICS, SETTING_USE_ENHANCED_HAPTICS_DEFAULT_VALUE)) {
