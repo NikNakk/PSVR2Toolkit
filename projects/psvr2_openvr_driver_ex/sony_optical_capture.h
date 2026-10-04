@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <openvr_driver.h>
 
 namespace psvr2_toolkit {
 
@@ -16,6 +17,8 @@ public:
 
   static void CaptureTrackingImage(const void *imageData, size_t imageSize, uint32_t imageTimestamp,
                                    uint16_t imageType);
+  static void CapturePublishedPose(const char *deviceLabel, uint32_t deviceIndex,
+                                   const vr::DriverPose_t &pose);
 };
 
 } // namespace psvr2_toolkit
