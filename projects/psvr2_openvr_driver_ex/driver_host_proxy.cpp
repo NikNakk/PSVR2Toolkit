@@ -2,6 +2,7 @@
 
 #include "hmd_math.h"
 #include "hmd_types.h"
+#include "sony_optical_capture.h"
 #include "util.h"
 #include "vr_settings.h"
 
@@ -38,6 +39,21 @@ bool DriverHostProxy::TrackedDeviceAdded(const char *pchDeviceSerialNumber, vr::
 
 void DriverHostProxy::TrackedDevicePoseUpdated(uint32_t unWhichDevice, const vr::DriverPose_t &newPose, uint32_t unPoseStructSize) {
   DeviceType deviceType = GetDeviceType(unWhichDevice);
+
+  if (SonyOpticalCapture::Enabled()) {
+    const char *label = nullptr;
+    switch (deviceType) {
+    case DeviceType::HMD: label = "HMD"; break;
+    case DeviceType::SenseControllerLeft: label = "L"; break;
+    case DeviceType::SenseControllerRight: label = "R"; break;
+    default: break;
+    }
+    if (label) {
+      // Capture the pose Sony published through OpenVR before Toolkit applies its controller compatibility transform.
+      SonyOpticalCapture::CapturePublishedPose(label, unWhichDevice, newPose);
+    }
+  }
+
   if (deviceType != DeviceType::SenseControllerLeft && deviceType != DeviceType::SenseControllerRight) {
     return m_pDriverHost->TrackedDevicePoseUpdated(unWhichDevice, newPose, unPoseStructSize);
   }
