@@ -6,12 +6,16 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <condition_variable>
+#include <cstring>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 #include <windows.h>
 
@@ -29,25 +33,53 @@ struct FrameSnapshot {
   uint16_t imageType = 0;
 };
 
+struct QueuedFrame {
+  FrameSnapshot frame;
+  uint64_t eventId = 0;
+  int32_t relativeFrame = 0;
+  uint32_t captureIndex = 0;
+  std::string filename;
+};
+
+struct ActiveEvent {
+  uint64_t eventId = 0;
+  uint32_t postFramesRemaining = 0;
+  int32_t nextPostRelativeIndex = 1;
+};
+
 struct CaptureState {
   std::once_flag initOnce;
   std::filesystem::path directory;
   std::ofstream events;
   std::ofstream frames;
   std::ofstream poses;
+
   std::mutex mutex;
+  std::condition_variable writerCv;
+  std::deque<QueuedFrame> writerQueue;
+  std::thread writerThread;
+  bool stopWriter = false;
 
   std::atomic<uint64_t> eventId{0};
 
   std::array<FrameSnapshot, kPreFramesPerEvent> history;
   size_t historyCount = 0;
   size_t historyNext = 0;
+  std::deque<ActiveEvent> activeEvents;
 
-  uint64_t activeEventId = 0;
-  uint32_t postFramesRemaining = 0;
-  int32_t nextPostRelativeIndex = 1;
+  uint32_t cameraFramesQueued = 0;
 
-  uint32_t cameraFramesWritten = 0;
+  ~CaptureState()
+  {
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      stopWriter = true;
+    }
+    writerCv.notify_all();
+    if (writerThread.joinable()) {
+      writerThread.join();
+    }
+  }
 };
 
 CaptureState &
@@ -91,6 +123,41 @@ hex_bytes(const void *data, size_t size)
 }
 
 void
+writer_main(CaptureState *s)
+{
+  for (;;) {
+    QueuedFrame item;
+    {
+      std::unique_lock<std::mutex> lock(s->mutex);
+      s->writerCv.wait(lock, [s]() { return s->stopWriter || !s->writerQueue.empty(); });
+      if (s->stopWriter && s->writerQueue.empty()) {
+        break;
+      }
+
+      item = std::move(s->writerQueue.front());
+      s->writerQueue.pop_front();
+    }
+
+    const std::filesystem::path path = s->directory / item.filename;
+    std::ofstream out(path, std::ios::out | std::ios::binary | std::ios::trunc);
+    if (!out) {
+      continue;
+    }
+
+    out.write(reinterpret_cast<const char *>(item.frame.bytes.data()),
+              static_cast<std::streamsize>(item.frame.bytes.size()));
+    out.close();
+
+    if (s->frames) {
+      s->frames << item.frame.hostTimestampUs << ',' << item.captureIndex << ',' << item.eventId << ','
+                << item.relativeFrame << ',' << item.frame.imageTimestamp << ',' << item.frame.imageType << ','
+                << item.frame.bytes.size() << ',' << item.filename << "\n";
+      s->frames.flush();
+    }
+  }
+}
+
+void
 initialize_if_needed()
 {
   CaptureState &s = state();
@@ -118,9 +185,11 @@ initialize_if_needed()
                "head_qw,head_qx,head_qy,head_qz,head_tx,head_ty,head_tz\n";
       }
 
+      s.writerThread = std::thread(writer_main, &s);
+
       Util::DriverLog(
           "[Sony Optical Capture] directory={} camera-only clean-room capture: {} pre + {} post frames/event, "
-          "maxCameraFrames={}",
+          "maxCameraFrames={} (background writer)",
           s.directory.string(), kPreFramesPerEvent, kPostFramesPerEvent, kMaxCameraFrames);
     } catch (const std::exception &e) {
       Util::DriverLog("[Sony Optical Capture] initialization failed: {}", e.what());
@@ -135,59 +204,49 @@ new_event_id()
 }
 
 void
-write_frame_locked(CaptureState &s, const FrameSnapshot &frame, uint64_t eventId, int32_t relativeFrame)
+queue_frame_locked(CaptureState &s, const FrameSnapshot &frame, uint64_t eventId, int32_t relativeFrame)
 {
-  if (s.cameraFramesWritten >= kMaxCameraFrames || s.directory.empty() || frame.bytes.empty()) {
+  if (s.cameraFramesQueued >= kMaxCameraFrames || s.directory.empty() || frame.bytes.empty()) {
     return;
   }
 
-  const uint32_t captureIndex = ++s.cameraFramesWritten;
+  const uint32_t captureIndex = ++s.cameraFramesQueued;
 
   std::ostringstream filename;
   filename << "camera-" << std::setfill('0') << std::setw(4) << captureIndex << "-event-" << std::setw(4)
            << eventId << "-rel-" << (relativeFrame >= 0 ? "p" : "m") << std::setw(2)
            << (relativeFrame >= 0 ? relativeFrame : -relativeFrame) << "-ts-" << frame.imageTimestamp << ".vi11";
 
-  const std::filesystem::path path = s.directory / filename.str();
-  std::ofstream out(path, std::ios::out | std::ios::binary | std::ios::trunc);
-  if (!out) {
-    return;
-  }
-
-  out.write(reinterpret_cast<const char *>(frame.bytes.data()),
-            static_cast<std::streamsize>(frame.bytes.size()));
-  out.close();
-
-  if (s.frames) {
-    s.frames << frame.hostTimestampUs << ',' << captureIndex << ',' << eventId << ',' << relativeFrame << ','
-             << frame.imageTimestamp << ',' << frame.imageType << ',' << frame.bytes.size() << ','
-             << filename.str() << "\n";
-    s.frames.flush();
-  }
+  QueuedFrame queued;
+  queued.frame = frame; // Memory copy only on the Sony/camera callback; disk I/O is done by writer_main.
+  queued.eventId = eventId;
+  queued.relativeFrame = relativeFrame;
+  queued.captureIndex = captureIndex;
+  queued.filename = filename.str();
+  s.writerQueue.push_back(std::move(queued));
+  s.writerCv.notify_one();
 }
 
 void
 arm_camera_event_locked(CaptureState &s, uint64_t eventId)
 {
   /*
-   * Dump the two frames immediately preceding the event, oldest first.
+   * Preserve the two observable camera frames immediately preceding the event, oldest first.
    * historyNext points at the slot that will be overwritten next.
    */
   if (s.historyCount > 0) {
     const size_t count = s.historyCount;
-    const size_t oldest =
-        s.historyCount == kPreFramesPerEvent ? s.historyNext : 0;
+    const size_t oldest = s.historyCount == kPreFramesPerEvent ? s.historyNext : 0;
 
     for (size_t i = 0; i < count; ++i) {
       const size_t idx = (oldest + i) % kPreFramesPerEvent;
       const int32_t relative = -static_cast<int32_t>(count - i);
-      write_frame_locked(s, s.history[idx], eventId, relative);
+      queue_frame_locked(s, s.history[idx], eventId, relative);
     }
   }
 
-  s.activeEventId = eventId;
-  s.postFramesRemaining = kPostFramesPerEvent;
-  s.nextPostRelativeIndex = 1;
+  s.activeEvents.push_back(
+      ActiveEvent{eventId, kPostFramesPerEvent, 1});
 }
 
 void
@@ -286,24 +345,31 @@ SonyOpticalCapture::CaptureTrackingImage(const void *imageData,
   }
 
   initialize_if_needed();
+  CaptureState &s = state();
+  const auto *bytes = static_cast<const uint8_t *>(imageData);
 
-  FrameSnapshot current;
+  std::lock_guard<std::mutex> lock(s.mutex);
+
+  /*
+   * Reuse the two ring-buffer allocations instead of allocating a new ~1 MiB vector at 60 Hz.
+   */
+  FrameSnapshot &current = s.history[s.historyNext];
   current.hostTimestampUs = host_timestamp_us();
   current.imageTimestamp = imageTimestamp;
   current.imageType = imageType;
-  const auto *bytes = static_cast<const uint8_t *>(imageData);
-  current.bytes.assign(bytes, bytes + imageSize);
+  current.bytes.resize(imageSize);
+  std::memcpy(current.bytes.data(), bytes, imageSize);
 
-  CaptureState &s = state();
-  std::lock_guard<std::mutex> lock(s.mutex);
-
-  if (s.postFramesRemaining > 0 && s.activeEventId != 0) {
-    write_frame_locked(s, current, s.activeEventId, s.nextPostRelativeIndex);
-    --s.postFramesRemaining;
-    ++s.nextPostRelativeIndex;
+  for (auto it = s.activeEvents.begin(); it != s.activeEvents.end();) {
+    queue_frame_locked(s, current, it->eventId, it->nextPostRelativeIndex);
+    ++it->nextPostRelativeIndex;
+    if (--it->postFramesRemaining == 0) {
+      it = s.activeEvents.erase(it);
+    } else {
+      ++it;
+    }
   }
 
-  s.history[s.historyNext] = std::move(current);
   s.historyNext = (s.historyNext + 1) % kPreFramesPerEvent;
   s.historyCount = std::min(s.historyCount + 1, static_cast<size_t>(kPreFramesPerEvent));
 }
