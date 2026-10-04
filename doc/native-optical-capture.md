@@ -52,6 +52,13 @@ can visibly change illumination (`SET_SYNC_PHASE` and `SET_LEDS_IMMEDIATE`) plus
 transitions. Periodic command type 6 and timing-only
 adjustments remain in the CSV but do not consume the image budget.
 
+### clock_sync.csv
+
+Records paired QPC microseconds and Unix-wall-clock microseconds about once per second. Wireshark ETW pcapng timestamps
+are wall-clock based, while Toolkit's event/camera/pose timestamps use QPC. Fitting these pairs gives a direct affine
+mapping between the two clocks, so A2/31 Bluetooth changes can be aligned to camera/IF8/pose data without relying on
+vrserver log formatting.
+
 ### poses.csv
 
 Records the HMD and Sense poses that Sony publishes through the standard OpenVR
