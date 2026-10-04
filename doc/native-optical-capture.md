@@ -70,7 +70,7 @@ This is useful for a clean-room replacement of the current experimental LED geom
 be paired with the externally published HMD/controller relative pose and the independently obtained camera calibration
 to estimate emitter positions.
 
-### camera_frames.csv and camera-*.vi11
+### camera_frames.csv and camera-*.vi
 
 Toolkit keeps a rolling two-frame history of the observable VI camera stream. The field previously labelled
 `image_type=11` in Toolkit is at the same wire offset as Monado's independently parsed `camera_set`; the capture
@@ -86,10 +86,9 @@ In addition, one raw VI frame is sampled approximately once per second with `eve
 a normal run contains controller viewpoints that are not tied to an LED transition. This is intended for the independent
 multi-view LED-geometry reconstruction.
 
-Capture is capped at 240 frames. The Sony/camera callback path only copies selected frames into a bounded memory queue;
-the actual file I/O runs on a background writer thread so disk latency does not block the native LED state machine.
+Capture is capped at 240 frames. The completed raw IF6/0x87 USB read is the sole source of saved VI packets. Selected packets are copied into a bounded memory queue; the actual file I/O runs on a background writer thread so disk latency does not block the native LED state machine.
 
-Each `.vi11` file contains the complete raw USB VI record. We deliberately no longer label the payload as BC4:
+Each `.vi` file contains the complete raw IF6/0x87 USB VI record. We deliberately no longer label the payload as BC4:
 Toolkit's old camera-conversion path made that assumption, while Monado's independent observable USB analysis exposes a
 different 8-byte-per-sample packing for the same 1,040,640-byte packet size.
 
@@ -188,7 +187,6 @@ The static periods are important: image differencing then isolates emitter chang
 
 ## Non-interference
 
-The camera copy happens after Sony's normal image poll has completed. IF8 data is copied from the completed observable
-USB read. Disk writes run on a background writer thread. The new code does not replace Sony's controller output, pose
+IF6 camera and IF8 LED-detector data are copied directly from completed observable USB reads, before any semantic interpretation by the capture code. Disk writes run on a background writer thread. The new code does not replace Sony's controller output, pose
 solver or camera processing; it observes USB payloads and poses Sony publishes through OpenVR, and uses event timestamps
 only to choose which nearby camera frames to retain.
