@@ -2,6 +2,7 @@
 #include "hmd_driver_loader.h"
 #include "hook_lib.h"
 #include "libusb-1.0/libusb.h"
+#include "sony_optical_capture.h"
 #include "util.h"
 
 #include <atomic>
