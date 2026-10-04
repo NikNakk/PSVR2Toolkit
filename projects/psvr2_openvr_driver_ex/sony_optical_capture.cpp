@@ -97,6 +97,7 @@ struct CaptureState {
   std::ofstream events;
   std::ofstream frames;
   std::ofstream poses;
+  std::ofstream clockSync;
   std::ofstream ledDetector;
 
   std::mutex mutex;
@@ -115,6 +116,7 @@ struct CaptureState {
 
   uint32_t cameraFramesQueued = 0;
   uint64_t cameraFrameOrdinal = 0;
+  uint64_t lastClockSyncHostUs = 0;
   bool publishedTrackingStateKnown[3] = {false, false, false};
   bool publishedTrackingValid[3] = {false, false, false};
   int publishedTrackingResult[3] = {0, 0, 0};
@@ -153,6 +155,18 @@ host_timestamp_us()
   QueryPerformanceCounter(&now);
   return static_cast<uint64_t>(
       (static_cast<double>(now.QuadPart) / static_cast<double>(frequency.QuadPart)) * 1e6);
+}
+
+uint64_t
+unix_timestamp_us()
+{
+  FILETIME ft = {};
+  GetSystemTimePreciseAsFileTime(&ft);
+  ULARGE_INTEGER ticks = {};
+  ticks.LowPart = ft.dwLowDateTime;
+  ticks.HighPart = ft.dwHighDateTime;
+  constexpr uint64_t kWindowsToUnixEpoch100ns = 116444736000000000ULL;
+  return (ticks.QuadPart - kWindowsToUnixEpoch100ns) / 10ULL;
 }
 
 std::string
@@ -250,6 +264,7 @@ initialize_if_needed()
       s.events.open(s.directory / "events.csv", std::ios::out | std::ios::trunc);
       s.frames.open(s.directory / "camera_frames.csv", std::ios::out | std::ios::trunc);
       s.poses.open(s.directory / "poses.csv", std::ios::out | std::ios::trunc);
+      s.clockSync.open(s.directory / "clock_sync.csv", std::ios::out | std::ios::trunc);
       s.ledDetector.open(s.directory / "usb-if8-led-detector.bin",
                          std::ios::out | std::ios::binary | std::ios::trunc);
 
@@ -259,6 +274,9 @@ initialize_if_needed()
       if (s.frames) {
         s.frames << "host_us,capture_index,event_id,relative_frame,vts_us,sequence_id,camera_set,"
                     "image_width,image_height,active_width,active_height,size,filename\n";
+      }
+      if (s.clockSync) {
+        s.clockSync << "qpc_us,unix_us\n";
       }
       if (s.poses) {
         s.poses
@@ -438,6 +456,15 @@ SonyOpticalCapture::CaptureTrackingImage(const void *imageData,
   std::memcpy(current.bytes.data(), bytes, imageSize);
 
   ++s.cameraFrameOrdinal;
+  if (s.lastClockSyncHostUs == 0 ||
+      current.hostTimestampUs - s.lastClockSyncHostUs >= 1000000ULL) {
+    s.lastClockSyncHostUs = current.hostTimestampUs;
+    if (s.clockSync) {
+      s.clockSync << current.hostTimestampUs << ',' << unix_timestamp_us() << "\n";
+      s.clockSync.flush();
+    }
+  }
+
   if (s.cameraFrameOrdinal % kPeriodicCameraSampleStride == 0) {
     // event_id=0 / relative_frame=0 denotes a periodic clean-room geometry sample.
     queue_frame_locked(s, current, 0, 0);
