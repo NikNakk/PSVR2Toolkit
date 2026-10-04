@@ -221,10 +221,11 @@ vr::EVRInitError sie__psvr2__HmdDevice__ActivateHook(void *thisptr, uint32_t unO
     int32_t format = vr::CVS_FORMAT_NV12;
     vr::WritePathProperty(pVRPaths, pHmdDeviceCamera->blockQueueHandle, "/format", format);
 
-    if (VRSettings::GetBool(STEAMVR_SETTINGS_FORCE_CAMERA_ON_FOR_SENSE_TRACE, SETTING_FORCE_CAMERA_ON_FOR_SENSE_TRACE_DEFAULT_VALUE)) {
-      Util::DriverLog("Keeping PSVR2 camera active for experimental Sense LED tracing...");
-      pHmdDeviceCamera->SetUserBit(CameraUser_ExperimentalSenseTrace, true);
-    }
+    // Experimental branch: deliberately ignore any persisted SteamVR setting here.
+    // This test requires the physical PSVR2 camera pipeline to remain active after
+    // vrcompositor releases its CameraUser_Hmd bit.
+    Util::DriverLog("[Native Prescan Camera Hold] FORCED camera hold active (unconditional experimental build).");
+    pHmdDeviceCamera->SetUserBit(CameraUser_ExperimentalSenseTrace, true);
   }
 
   // Tell SteamVR our dashboard scale.
@@ -246,9 +247,8 @@ vr::EVRInitError sie__psvr2__HmdDevice__ActivateHook(void *thisptr, uint32_t unO
 
 void (*sie__psvr2__HmdDevice__Deactivate)(void *) = nullptr;
 void sie__psvr2__HmdDevice__DeactivateHook(void *thisptr) {
-  if (::g_pHmdDeviceCamera &&
-      VRSettings::GetBool(STEAMVR_SETTINGS_FORCE_CAMERA_ON_FOR_SENSE_TRACE, SETTING_FORCE_CAMERA_ON_FOR_SENSE_TRACE_DEFAULT_VALUE)) {
-    Util::DriverLog("Releasing experimental Sense LED camera hold...");
+  if (::g_pHmdDeviceCamera) {
+    Util::DriverLog("[Native Prescan Camera Hold] releasing forced camera hold.");
     ::g_pHmdDeviceCamera->SetUserBit(CameraUser_ExperimentalSenseTrace, false);
   }
 
