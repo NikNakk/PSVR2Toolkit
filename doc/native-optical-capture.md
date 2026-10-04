@@ -72,7 +72,11 @@ saves:
 - two frames immediately before the event (`relative_frame=-2,-1`);
 - three frames immediately after it (`relative_frame=+1,+2,+3`).
 
-Capture is capped at 160 frames. The Sony/camera callback path only copies selected frames into a bounded memory queue;
+In addition, one raw VI frame is sampled approximately once per second with `event_id=0` / `relative_frame=0` so
+a normal run contains controller viewpoints that are not tied to an LED transition. This is intended for the independent
+multi-view LED-geometry reconstruction.
+
+Capture is capped at 240 frames. The Sony/camera callback path only copies selected frames into a bounded memory queue;
 the actual file I/O runs on a background writer thread so disk latency does not block the native LED state machine.
 
 Each `.vi11` file contains the complete raw USB VI record. We deliberately no longer label the payload as BC4:
