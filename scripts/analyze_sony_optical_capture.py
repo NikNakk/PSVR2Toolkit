@@ -92,6 +92,8 @@ def main():
     ap.add_argument('capture',type=Path); ap.add_argument('bluetooth',type=Path)
     ap.add_argument('--out',type=Path,default=Path('analysis/sony-oracle-20261004'))
     ap.add_argument('--vrserver',type=Path)
+    ap.add_argument('--controller-side',choices=['L','R'],default='R')
+    ap.add_argument('--bt-handle',type=lambda s:int(s,0),help='Validated ACL connection handle; required for multi-controller traces')
     ap.add_argument('--correct-reversed-ground-truth-side',action='store_true',help='Explicit opt-in for pre-fix capture')
     args=ap.parse_args(); out=args.out; out.mkdir(parents=True,exist_ok=True)
     source=args.capture
@@ -107,6 +109,13 @@ def main():
                residual_p95_abs_us=float(np.percentile(abs(residual),95)),pairs=len(x))
     writecsv(out/'clock-residuals.csv',[dict(**r,residual_us=float(e)) for r,e in zip(sync,residual)])
     a=list(reports(args.bluetooth))
+    handles={r['acl_handle'] for r in a if r['acl_handle'] is not None}
+    if len(handles)>1 and args.bt_handle is None:
+        raise ValueError('Multiple Bluetooth handles: specify --bt-handle; schedules must not be interleaved')
+    if args.bt_handle is not None:
+        a=[r for r in a if r['acl_handle']==args.bt_handle]
+    a=[r for r in a if x.min()-1000000<=qpc(r['capture_ts_us'])<=x.max()+1000000]
+    if not a: raise ValueError('No selected A2 reports overlap the capture clock range')
     for r in a: r['host_us']=qpc(r['capture_ts_us'])
     ai=Index(a); writecsv(out/'a231.csv',a)
     audit=Counter(); input_times=[]; output_times=[]; bad=Counter(); candidates=Counter(); a1seq=[]
@@ -121,6 +130,11 @@ def main():
                 r=packet[pos+1:pos+1+length]
                 if zlib.crc32(bytes([typ])+r[:74])&0xffffffff != int.from_bytes(r[74:78],'little'):
                     bad[hex(typ)+'_crc_rejected_candidate']+=1; continue
+                if args.bt_handle is not None:
+                    if pos<8: continue
+                    handle,acl_len,l2_len,cid=struct.unpack_from('<HHHH',packet,pos-8)
+                    if acl_len!=83 or l2_len!=79 or handle&0xfff!=args.bt_handle: continue
+                if not x.min()-1000000<=qpc(ts)<=x.max()+1000000: continue
                 if typ==0xa1: input_times.append(qpc(ts)); a1seq.append(r[1])
                 else: output_times.append(qpc(ts))
     audit.update(candidates); audit.update(bad); audit['valid_a131']=len(input_times); audit['valid_a231']=len(output_times)
@@ -137,7 +151,7 @@ def main():
     def setting(t):
         r=ri.previous(t)
         return r if r and t<=a[-1]['host_us'] else {}
-    poses=data['poses']; right=[r for r in poses if r['device']=='R']; pi=Index(right)
+    poses=data['poses']; right=[r for r in poses if r['device']==args.controller_side]; pi=Index(right)
     vi=Index(data['camera_frames']); events=Index(data['events'])
     profiles=[profile(n,[int(r['host_us']) for r in rows]) for n,rows in data.items() if n!='clock_sync']
     profiles.append(profile('clock_sync',x)); profiles.append(profile('A2/31',output_times)); profiles.append(profile('A1/31',input_times))
@@ -148,6 +162,7 @@ def main():
         if args.correct_reversed_ground_truth_side:
             r['original_side']=r['side']; r['side']={'L':'R','R':'L'}[r['side']]; corrected+=1
         r['assigned_int']=int(r['assigned_mask'],0); r['matched_int']=int(r['matched_mask'],0)
+    gt=[r for r in gt if r['side']==args.controller_side]
     gti=Index(gt)
     # Stream complete IF8: per-offset alphabet/change count, block activity, and compact prefixes only.
     if8=[]; prefixes=[]; sizes=Counter(); ifaces=Counter(); previous=None; previous_t=None
@@ -206,7 +221,7 @@ def main():
         t=int(r['host_us']); s=setting(t); p,pd=pi.nearest(t,50000); v,vd=vi.nearest(t); u,ud=ii.nearest(t); e,ed=events.nearest(t)
         row={k:v for k,v in r.items() if k not in ['assigned_int','matched_int']}
         row.update(unix_us=round(utc(t)),run_id=s.get('run_id',''),**{k:s.get(k,'') for k in fields},
-                   event_id=e.get('event_id',''),event_kind=e.get('kind',''),event_detail=e.get('detail',''),event_dt_us=ed,
+                   event_id=e.get('event_id',''),event_kind=e.get('kind',''),event_side=e.get('side',''),event_detail=e.get('detail',''),event_dt_us=ed,
                    pose_dt_us=pd,pose_valid=p.get('pose_valid',''),tracking_result=p.get('tracking_result',''),
                    **{k:p.get(k,'') for k in ['px','py','pz','qw','qx','qy','qz','pose_time_offset_s']},
                    nearest_vi=v.get('filename',''),vi_dt_us=vd,vi_sequence=v.get('sequence_id',''),
@@ -294,7 +309,7 @@ def main():
         ar,br=lanes(source/pre['filename']),lanes(source/post['filename']); d=np.abs(br.astype(np.int16)-ar.astype(np.int16)).astype(np.uint8)
         p0,_=pi.nearest(t0,50000); p1,_=pi.nearest(t1,50000)
         motion=math.sqrt(sum((float(p1[k])-float(p0[k]))**2 for k in ['px','py','pz'])) if p0 and p1 and p0['pose_valid']=='1' and p1['pose_valid']=='1' else math.nan
-        qdot=abs(sum(float(p1[k])*float(p0[k]) for k in ['qw','qx','qy','qz'])) if p0 and p1 and p0['pose_valid']=='1' and p1['pose_valid']=='1' else math.nan
+        qdot=abs(sum(float(p1[k])*float(p0[k]) for k in ['qw','qx','qy','qz'])) / math.sqrt(sum(float(p1[k])**2 for k in ['qw','qx','qy','qz'])*sum(float(p0[k])**2 for k in ['qw','qx','qy','qz'])) if p0 and p1 and p0['pose_valid']=='1' and p1['pose_valid']=='1' else math.nan
         angle=math.degrees(2*math.acos(min(1,qdot))) if math.isfinite(qdot) else math.nan
         s0,s1=setting(t0),setting(t1); commands=[r for r in a if t0<=r['host_us']<=t1]
         ev=next((e for e in data['events'] if int(e['event_id'])==eid),{})
@@ -338,7 +353,7 @@ def main():
     log=[]
     if args.vrserver and args.vrserver.exists():
         log=[l for l in args.vrserver.read_text(errors='replace').splitlines() if 'Sony Optical Capture' in l or 'dropped frames' in l]
-    validation=dict(clock=clock,bluetooth=dict(audit),corrected_ground_truth_rows=corrected,
+    validation=dict(controller_side=args.controller_side,bt_handle=args.bt_handle,clock=clock,bluetooth=dict(audit),corrected_ground_truth_rows=corrected,
                     ground_truth_original_sides=dict(Counter(r.get('original_side',r['side']) for r in gt)),
                     ground_truth_cameras=dict(Counter(r['camera'] for r in gt)),
                     ground_truth_frame_gaps=dict(Counter(map(int,np.diff(sorted(framegroups)))).most_common(10)),

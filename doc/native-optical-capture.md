@@ -119,7 +119,7 @@ different 8-byte-per-sample packing for the same 1,040,640-byte packet size.
 For the mode-0x10-sized packet, the bytes after the 256-byte header fit exactly as:
 
 ```
-508 rows × (254 samples × 8 byte lanes + 16 bytes row padding)
+508 rows Ã— (254 samples Ã— 8 byte lanes + 16 bytes row padding)
 ```
 
 The physical/semantic meaning of those lanes is intentionally left open until a new capture verifies the VI header and
@@ -131,7 +131,7 @@ before/after image behaviour.
 py scripts\extract_psvr2_vi_lanes.py "$env:TEMP\psvr2-toolkit-optical-<pid>"
 ```
 
-This prints each frame's raw VI header metadata and writes lanes 0..7 as semantics-free 254×508 PGM images. It does
+This prints each frame's raw VI header metadata and writes lanes 0..7 as semantics-free 254Ã—508 PGM images. It does
 not claim that any particular lane is a named camera or colour channel.
 
 ## Difference LED events automatically
@@ -240,7 +240,7 @@ original label. Do not apply this switch to post-fix captures.
   appear; phases 3/4 do not occur in this capture.
 - Initial right-pose validity is acquired during PRESCAN, approximately 3.012 s
   before the first BROAD command.
-- Four completed BROAD episodes last 10.001–10.020 s before returning to PRESCAN.
+- Four completed BROAD episodes last 10.001â€“10.020 s before returning to PRESCAN.
   The right pose remains valid at all four transitions. Two brief pose-validity
   losses (0.802 and 1.696 s) recover within BROAD, without an intervening PRESCAN.
   These observations do not establish the cause of the periodic transitions.
@@ -257,7 +257,7 @@ All 6,206 captured IF8/0x89 payloads are 36,944 bytes. Repeated wire structure i
 64-byte header
 4 sections, each:
     little-endian u32 populated-record count
-    256 record slots × 36 bytes
+    256 record slots Ã— 36 bytes
 ```
 
 The four sections start at payload offsets `64 + section*9220`. All slots after
@@ -306,3 +306,60 @@ Observed protocol/behaviour: the directly observed facts above
 Implementation provenance: independently written local analysis of captured I/O;
 no private tracker layout/algorithm or Sony machine-code inspection used, and no
 Monado implementation or proprietary model/geometry data transferred
+
+## Second run: motion and cover reconstruction (PID 30976)
+
+The later capture and `../sense-research/steamvr-success-3.pcapng.gz` were analysed
+with explicit controller-side and Bluetooth ACL-handle selection. Full results:
+`../analysis/sony-oracle-20261004-30976/capture-summary.md`.
+
+Direct observations:
+
+- The trace has two separate validated ACL streams (handles 12 and 13, CID 0x42).
+  Six brief byte-9/bit-1 input presses occur on handle 12, consistent with the user's
+  right-controller X markers. Handle identity is connection-specific; it must not
+  be hard-coded as right/left in another implementation.
+- A candidate signed three-axis rotational field at A1/31 report offset 17 has a
+  magnitude correlation of 0.994907 with published right-controller angular speed
+  across 28,805 time-near samples. Scale and axis meanings remain unassigned.
+  No private Sony sensor/tracker layout was consulted for this statistical test.
+- The right semantic union is zero continuously at +148.345â€“153.469 s and
+  +195.724â€“199.496 s, consistent with the two reported covers. Published right-pose
+  validity remains true through both intervals and the remainder of the run.
+- Quiet pose/input intervals retain approximately ten-second BROAD/PRESCAN cycles.
+  Most BROAD intervals are 9.997â€“10.027 s; one is shorter at 9.097 s. The first
+  cover coincides with a 10.604 s PRESCAN interval. During the second cover, BROAD
+  starts before semantic matches resume. No universal optical-match prerequisite
+  for entering BROAD is established. Neither controller reaches BG/STABLE.
+- Right BROAD includes led0=0x11. Value 05 has a mean matched cross-camera union of
+  8.695 here, compared with 0.433 previously. The earlier sparse observation must
+  not be turned into an established command-to-emitter-subset rule.
+- The final right zero-match interval lasts +212.858â€“248.376 s. Controller input
+  reports continue with distinct data and a low rotational signal. HMD pose updates
+  stop at about +220.002 s. The user reports this tail may be equipment removal followed by slow SteamVR
+  shutdown. Treat it as probable teardown, not the intended final hold. A
+  valid/frozen controller pose is not evidence of sustained optical tracking.
+- All 7,266 IF8 packets repeat the previously observed structure: 333,259 populated
+  records pass ordered candidate coordinate bounds, all unused tails are zero,
+  and all 240 VI rows have common-counter IF8 matches. IF8 includes both controllers
+  and background detections; aggregate counts cannot be attributed exclusively to
+  one controller's scheduling values.
+- The first new IF8 packet is one device frame after the preceding capture's final
+  packet, although host timestamps differ by 15.594 s. The next packet jumps 933
+  device frames in only 697 host microseconds. This strongly supports startup
+  delivery of an old/delayed packet; the 932 absent startup counter positions must
+  be distinguished from the three absent positions at a later in-run jump.
+
+The unchanged native budgets still limit VI imagery to +55.000 s and IF8 to
++121.001 s. Neither cover has saved contemporaneous VI/IF8 evidence, and no marked
+quiet hold has saved VI imagery. The new semantic/pose/Bluetooth reconstruction
+therefore does not establish visible LEDs or VI camera/lane mapping.
+
+Feature: multi-controller wire separation and experiment reconstruction
+Source of knowledge: Bluetooth/USB wire observations, public OpenVR poses,
+permitted semantic LED outputs and approximate user experiment markers
+Method: validated ACL/HID framing and CRC, explicit side selection, affine clocks,
+button-edge and pose/sensor differential analysis
+Observed protocol/behaviour: the observations above; causes/axis mappings qualified
+Implementation provenance: independent analysis of captured I/O and output labels;
+no private Sony tracking implementation or canonical model geometry transferred

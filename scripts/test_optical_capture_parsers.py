@@ -34,6 +34,14 @@ class FramingTests(unittest.TestCase):
    report[32]^=1
    with gzip.open(p,'wb') as f: f.write(pcap(b'\xa2'+report))
    self.assertEqual(list(reports(p)),[])
+ def test_acl_handle_demultiplexing(self):
+  report=bytearray(78);report[0]=0x31;report[21]=2;report[23]=42
+  report[74:]=struct.pack('<I',zlib.crc32(b'\xa2'+report[:74])&0xffffffff)
+  with tempfile.TemporaryDirectory() as tmp:
+   p=Path(tmp)/'two.pcapng'
+   raw=pcap(struct.pack('<HHHH',12,83,79,66)+b'\xa2'+report)
+   raw+=block(6,struct.pack('<IIIII',0,0,1234577,87,87)+struct.pack('<HHHH',13,83,79,66)+b'\xa2'+report)
+   p.write_bytes(raw);rows=list(reports(p));self.assertEqual([r['acl_handle'] for r in rows],[12,13])
  def test_pcap_corruption(self):
   with tempfile.TemporaryDirectory() as tmp:
    p=Path(tmp)/'bt.pcapng'; p.write_bytes(pcap(b'hello')[:-1])

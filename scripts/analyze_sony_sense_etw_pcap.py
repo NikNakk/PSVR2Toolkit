@@ -101,42 +101,50 @@ def stream_enhanced_packets(path: Path, audit=None):
                 yield ts, body[20:20+cap]
 
 
-def reports(blob: bytes | Path):
-    packets = stream_enhanced_packets(blob) if isinstance(blob, Path) else enhanced_packets(blob)
-    for capture_ts_us, packet in packets:
-        start = 0
-        while True:
-            pos = packet.find(b"\xa2\x31", start)
-            if pos < 0:
-                break
-            start = pos + 1
-            if pos + 79 > len(packet):
-                continue
-            hidp = packet[pos]
-            report = packet[pos + 1 : pos + 79]
-            if report[0] != 0x31:
-                continue
-            expected_crc = int.from_bytes(report[74:78], "little")
-            actual_crc = zlib.crc32(bytes([hidp]) + report[:74]) & 0xFFFFFFFF
-            if expected_crc != actual_crc:
-                continue
+def hid_reports(source: bytes | Path, audit=None):
+    """CRC-validated HID reports with independently checked adjacent ACL framing.
 
-            yield {
-                "capture_ts_us": capture_ts_us,
-                "capture_utc": datetime.fromtimestamp(capture_ts_us / 1_000_000, timezone.utc).isoformat(),
-                "mode": report[1],
-                "flags": report[2],
-                "report_timestamp": int.from_bytes(report[17:21], "little"),
-                "phase": report[21],
-                "sequence": report[22],
-                "period": report[23],
-                "cycle_position": int.from_bytes(report[24:28], "little", signed=True),
-                "cycle_length": int.from_bytes(report[28:32], "little"),
-                "led0": report[32],
-                "led1": report[33],
-                "led2": report[34],
-                "led3": report[35],
-            }
+    ETW payloads in these captures include an ACL header followed by an L2CAP
+    header immediately before the report. Expose a handle only when both length
+    fields validate; a signature scan alone does not establish device identity.
+    """
+    packets = stream_enhanced_packets(source, audit) if isinstance(source, Path) else enhanced_packets(source)
+    for capture_ts_us, packet in packets:
+        for typ in (0xa1, 0xa2):
+            start = 0
+            while True:
+                pos = packet.find(bytes([typ, 0x31]), start)
+                if pos < 0:
+                    break
+                start = pos + 1
+                if pos + 79 > len(packet):
+                    continue
+                report = packet[pos+1:pos+79]
+                if zlib.crc32(bytes([typ]) + report[:74]) & 0xffffffff != int.from_bytes(report[74:78], 'little'):
+                    continue
+                handle = cid = None
+                if pos >= 8:
+                    acl, acl_length, l2_length, channel = struct.unpack_from('<HHHH', packet, pos-8)
+                    if acl_length == 83 and l2_length == 79:
+                        handle, cid = acl & 0xfff, channel
+                yield capture_ts_us, typ, handle, cid, report
+
+
+def reports(blob: bytes | Path):
+    for capture_ts_us, typ, handle, cid, report in hid_reports(blob):
+        if typ != 0xa2:
+            continue
+        yield {
+            "capture_ts_us": capture_ts_us,
+            "capture_utc": datetime.fromtimestamp(capture_ts_us / 1_000_000, timezone.utc).isoformat(),
+            "acl_handle": handle, "l2cap_cid": cid,
+            "mode": report[1], "flags": report[2],
+            "report_timestamp": int.from_bytes(report[17:21], "little"),
+            "phase": report[21], "sequence": report[22], "period": report[23],
+            "cycle_position": int.from_bytes(report[24:28], "little", signed=True),
+            "cycle_length": int.from_bytes(report[28:32], "little"),
+            "led0": report[32], "led1": report[33], "led2": report[34], "led3": report[35],
+        }
 
 
 def setting_key(r):
@@ -182,9 +190,15 @@ def main():
     ap.add_argument("capture", type=Path)
     ap.add_argument("--csv", type=Path, help="write every valid A2/31 report as CSV")
     ap.add_argument("--runs-csv", type=Path, help="write schedule-setting runs as CSV")
+    ap.add_argument('--handle', type=lambda s: int(s, 0), help='ACL handle to analyse in multi-controller captures')
     args = ap.parse_args()
 
     rows = list(reports(args.capture))
+    handles = {r['acl_handle'] for r in rows if r['acl_handle'] is not None}
+    if len(handles) > 1 and args.handle is None:
+        raise SystemExit(f'Multiple Bluetooth ACL handles {sorted(handles)}: specify --handle')
+    if args.handle is not None:
+        rows = [r for r in rows if r['acl_handle'] == args.handle]
     if not rows:
         raise SystemExit("No CRC-valid A2/31 reports found")
 

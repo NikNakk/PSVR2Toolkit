@@ -1,0 +1,13 @@
+{
+  "previous_last_qpc_us": 409000474463,
+  "new_first_qpc_us": 409016068638,
+  "previous_last_counter": 6454,
+  "new_first_counter": 6455,
+  "previous_last_device_stamp": 113098991,
+  "new_first_device_stamp": 113115674,
+  "payloads_identical": false,
+  "previous_payload_sha256": "fbb958ae51abe148ea6ce08cfb0fb00762668709e272f7e0f3b3e276d6997ddb",
+  "new_payload_sha256": "d1e29b49f6fce1641185252de2001761240a19c1256d06cba6f3ea9d05aeb9cb",
+  "previous_capture": "%TEMP%/psvr2-toolkit-optical-31876",
+  "new_capture": "%TEMP%/psvr2-toolkit-optical-30976"
+}

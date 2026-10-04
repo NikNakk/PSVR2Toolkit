@@ -11,8 +11,10 @@ from analyze_sony_optical_capture import readcsv,writecsv,Index
 
 
 def main():
- ap=argparse.ArgumentParser(); ap.add_argument('capture',type=Path); ap.add_argument('--out',type=Path,default=Path('analysis/sony-oracle-20261004')); args=ap.parse_args(); out=args.out
- packetrows=readcsv(out/'if8-packets.csv'); gt=readcsv(args.capture/'sony_led_ground_truth.csv'); counts=[]; blobs=[]; times=[]; stamps=[]; counters=[]; audit=Counter(); types=Counter(); bounds=Counter(); slots=[Counter() for _ in range(4)]; nonzero_tails=Counter()
+ ap=argparse.ArgumentParser(); ap.add_argument('capture',type=Path); ap.add_argument('--out',type=Path,default=Path('analysis/sony-oracle-20261004')); ap.add_argument('--controller-side',choices=['L','R']); args=ap.parse_args(); out=args.out
+ packetrows=readcsv(out/'if8-packets.csv'); gt=readcsv(args.capture/'sony_led_ground_truth.csv');
+ if args.controller_side is None and len({r['side'] for r in gt})>1: raise ValueError('Multiple semantic controller sides: specify --controller-side')
+ gt=[r for r in gt if args.controller_side is None or r['side']==args.controller_side]; counts=[]; blobs=[]; times=[]; stamps=[]; counters=[]; audit=Counter(); types=Counter(); bounds=Counter(); slots=[Counter() for _ in range(4)]; nonzero_tails=Counter()
  # 64 + 4 * (4 + 256 * 36) = 36944, inferred from repeating markers/zero tails.
  for n,r in enumerate(iter_records(args.capture/'usb-if8-led-detector.bin')):
   times.append(r.host_us); stamps.append(struct.unpack_from('<I',r.payload,8)[0]); counters.append(struct.unpack_from('<I',r.payload,20)[0]); cs=[]; bs=[]
@@ -69,7 +71,7 @@ def main():
  frames=readcsv(out/'optical-frame-summary.csv')
  selected=[]
  for value in [4,5,6,10,12,13,14,255]:
-  eligible=[r for r in frames if r['phase']=='2' and int(r['led0'])==value]
+  eligible=[r for r in frames if r['phase']=='2' and int(r['led0'])==value and abs(times[int(np.argmin(abs(times-int(r['host_us']))))]-int(r['host_us']))<30000]
   # Highest observed union is illustrative, not representative prevalence.
   if eligible: selected.append(max(eligible,key=lambda r:int(r['union_count'])))
  sheet=Image.new('RGB',(4*254,len(selected)*280),'#111111'); draw=ImageDraw.Draw(sheet)

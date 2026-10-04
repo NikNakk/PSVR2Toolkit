@@ -11,12 +11,14 @@ from analyze_sony_optical_capture import readcsv,writecsv,Index
 
 
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('capture',type=Path);ap.add_argument('--out',type=Path,default=Path('analysis/sony-oracle-20261004'));args=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument('capture',type=Path);ap.add_argument('--out',type=Path,default=Path('analysis/sony-oracle-20261004'));ap.add_argument('--controller-side',choices=['L','R']);args=ap.parse_args()
  vi=readcsv(args.capture/'camera_frames.csv'); seqs={int(r['sequence_id']) for r in vi}; records={}
  for r in iter_records(args.capture/'usb-if8-led-detector.bin'):
   seq=struct.unpack_from('<I',r.payload,20)[0]
   if seq in seqs: records[seq]=r.payload
- gt=readcsv(args.capture/'sony_led_ground_truth.csv'); gi=[Index([r for r in gt if int(r['camera'])==cam]) for cam in range(4)]
+ gt=readcsv(args.capture/'sony_led_ground_truth.csv');
+ if args.controller_side is None and len({r['side'] for r in gt})>1: raise ValueError('Multiple semantic controller sides: specify --controller-side')
+ gt=[r for r in gt if args.controller_side is None or r['side']==args.controller_side]; gi=[Index([r for r in gt if int(r['camera'])==cam]) for cam in range(4)]
  acc=defaultdict(list); sampled=set()
  # Test full-height and stacked half-height; each quadrant additionally tests half-width.
  projections=[('half_x_full_y',.5,1,0,0),('half_xy_top',.5,.5,0,0),('half_xy_bottom',.5,.5,0,254)]

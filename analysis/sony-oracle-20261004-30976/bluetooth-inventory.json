@@ -1,0 +1,16 @@
+{
+  "streams": {
+    "('0xa1', '12', '66')": 28839,
+    "('0xa2', '12', '66')": 16846,
+    "('0xa1', '13', '66')": 28412,
+    "('0xa2', '13', '66')": 16492
+  },
+  "container": {
+    "blocks": 124323,
+    "linktype_290": 1,
+    "enhanced_packets": 124321,
+    "truncated_packets": 0
+  },
+  "button_intervals": 9,
+  "marker_note": "Field/bit identities are candidates derived from user-reported button presses; ACL handles are validated by adjacent framing. No automatic left/right attribution."
+}

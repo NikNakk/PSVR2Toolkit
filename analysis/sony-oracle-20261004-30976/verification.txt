@@ -1,0 +1,5 @@
+Full-data reconciliation passed: 16,846 selected A2 reports; 59,096 right semantic camera rows; 14,774 right optical frames; 7,266 IF8 packets; 240 VI records.
+333,259 populated IF8 records pass coordinate bounds; 129,900 right matched labels pass zero-based section bounds.
+Six candidate X markers; rotational-field correlation 0.994907 across 28,805 near-pose input reports.
+Five synthetic parser tests pass, including interleaved ACL handles; all modified/new Python scripts compile; git diff --check passes.
+Native driver not rebuilt; no capture budgets changed; raw inputs unmodified.

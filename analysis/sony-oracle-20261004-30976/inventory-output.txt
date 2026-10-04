@@ -1,0 +1,25 @@
+{
+  "capture": "C:\\Users\\nickl\\AppData\\Local\\Temp\\psvr2-toolkit-optical-30976",
+  "qpc_origin_us": 409016291352,
+  "unix_origin_us": 1791126539253695,
+  "clock_slope": 0.9999998889552026,
+  "clock_offset_us": -370.1075177666853,
+  "clock_rms_us": 256.0758851546793,
+  "clock_max_abs_us": 1444.898393779993,
+  "ground_truth_sides": {
+    "R": 59096,
+    "L": 58980
+  },
+  "vi_errors": [],
+  "if8_payload_sizes": {
+    "36944": 7266
+  },
+  "if8_counter_missing": 935,
+  "if8_counter_nonunit_jumps": {
+    "933": 1,
+    "4": 1
+  },
+  "if8_bytes": 268580424,
+  "if8_end_relative_s": 121.000767,
+  "selected_vi_end_relative_s": 55.000168
+}

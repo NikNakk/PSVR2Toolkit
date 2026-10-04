@@ -1,0 +1,91 @@
+{
+  "controller_side": "R",
+  "bt_handle": 12,
+  "clock": {
+    "qpc_origin_us": 409016291352,
+    "unix_origin_us": 1791126539253695,
+    "slope": 0.9999998889552026,
+    "offset_us": -370.1075177666853,
+    "rms_us": 256.0758851546793,
+    "max_abs_us": 1444.898393779993,
+    "residual_p95_abs_us": 489.1141666457053,
+    "pairs": 249
+  },
+  "bluetooth": {
+    "blocks": 124323,
+    "linktype_290": 1,
+    "enhanced_packets": 124321,
+    "truncated_packets": 0,
+    "0xa1": 57274,
+    "0xa2": 33348,
+    "0xa2_short_candidate": 7,
+    "0xa1_short_candidate": 19,
+    "0xa1_crc_rejected_candidate": 4,
+    "0xa2_crc_rejected_candidate": 3,
+    "valid_a131": 28839,
+    "valid_a231": 16846
+  },
+  "corrected_ground_truth_rows": 0,
+  "ground_truth_original_sides": {
+    "R": 59096
+  },
+  "ground_truth_cameras": {
+    "0": 14774,
+    "1": 14774,
+    "2": 14774,
+    "3": 14774
+  },
+  "ground_truth_frame_gaps": {
+    "1": 14773
+  },
+  "ground_truth_mask_out_of_range": 0,
+  "vi_errors": [],
+  "orphan_vi_files": [],
+  "unique_vi_sequences": 214,
+  "unique_vi_payloads": 214,
+  "if8_interfaces": {
+    "(8, 137)": 7266
+  },
+  "if8_unique_payloads": 7266,
+  "if8_bytes": 268580424,
+  "if8_zero_offsets": 34811,
+  "if8_constant_offsets": 34844,
+  "vi_pairs": 37,
+  "representative_events": [
+    16,
+    37,
+    43,
+    65,
+    72
+  ],
+  "log_observations": [
+    "Sun Oct 04 2026 16:06:51.022 [Info] - playstation_vr2: [Sony Optical Capture] capturing semantic 17-LED ground-truth outputs...",
+    "Sun Oct 04 2026 16:06:53.664 [Info] - playstation_vr2: [Sony Optical Capture] directory=C:\\Users\\nickl\\AppData\\Local\\Temp\\psvr2-toolkit-optical-31876 camera-only clean-room capture: 2 pre + 3 post frames/event, maxCameraFrames=240 with ~1 Hz periodic samples (background writer); observable IF8/0x89 LED-detector USB capture capped at 256 MiB",
+    "Sun Oct 04 2026 16:08:56.906 [Info] - playstation_vr2: [Sony Optical Capture] capturing semantic 17-LED ground-truth outputs...",
+    "Sun Oct 04 2026 16:08:59.029 [Info] - playstation_vr2: [Sony Optical Capture] directory=C:\\Users\\nickl\\AppData\\Local\\Temp\\psvr2-toolkit-optical-30976 camera-only clean-room capture: 2 pre + 3 post frames/event, maxCameraFrames=240 with ~1 Hz periodic samples (background writer); observable IF8/0x89 LED-detector USB capture capped at 256 MiB",
+    "Sun Oct 04 2026 16:09:10.902 [Info] - playstation_vr2: [SceVrTracker2][controller]Tracker dropped frames!!! 2 times in 10s, total 9 frames. pid:30976, profile:PC",
+    "Sun Oct 04 2026 16:09:23.808 [Info] - playstation_vr2: [SceVrTracker2][controller]Tracker dropped frames!!! 3 times in 10s, total 9 frames. pid:30976, profile:PC"
+  ],
+  "join_abs_us": {
+    "pose_dt_us": {
+      "median": 711.0,
+      "p95": 1559.0,
+      "max": 33794.0
+    },
+    "vi_dt_us": {
+      "median": 70100082.0,
+      "p95": 181063226.5,
+      "max": 193375513.0
+    },
+    "if8_dt_us": {
+      "median": 4099483.0,
+      "p95": 115062627.5,
+      "max": 127374914.0
+    },
+    "event_dt_us": {
+      "median": 133979.0,
+      "p95": 366997.0,
+      "max": 550928.0
+    }
+  }
+}

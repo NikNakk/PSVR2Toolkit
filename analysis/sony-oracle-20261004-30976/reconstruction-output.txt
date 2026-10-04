@@ -1,0 +1,37 @@
+{
+  "rotation_candidate": {
+    "offset": 17,
+    "correlation_with_published_angular_speed": 0.9949067501664444,
+    "samples": 28805,
+    "median_raw_magnitude": 23.558437978779494,
+    "p95_raw_magnitude": 767.2193140517973
+  },
+  "zero_match_intervals": [
+    {
+      "start_relative_s": "1.632292",
+      "end_relative_s": "2.570553",
+      "duration_s": 0.9382609999999998,
+      "end_censored": 0
+    },
+    {
+      "start_relative_s": "148.344579",
+      "end_relative_s": "153.468833",
+      "duration_s": 5.124253999999979,
+      "end_censored": 0
+    },
+    {
+      "start_relative_s": "195.724143",
+      "end_relative_s": "199.496294",
+      "duration_s": 3.772151000000008,
+      "end_censored": 0
+    },
+    {
+      "start_relative_s": "212.858263",
+      "end_relative_s": "248.375669",
+      "duration_s": 35.517405999999994,
+      "end_censored": 1
+    }
+  ],
+  "x_markers": 6,
+  "note": "Sensor triplet selected empirically by correlation; axis meanings and scale unassigned. Marker meaning from user recollection remains approximate."
+}
