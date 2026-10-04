@@ -13,8 +13,43 @@ CaesarUsbThreadGaze caesarUsbThreadGaze;
 void *(*Framework__Thread__start)(void *thisptr) = nullptr;
 
 void *(*CaesarManager__initialize)(CaesarManager *, void *, void *) = nullptr;
+namespace {
+void LogCaesarThreadMap(CaesarManager *manager) {
+  if (!manager) {
+    return;
+  }
+
+  struct NamedThread {
+    const char *name;
+    CaesarUsbThread *thread;
+  };
+
+  const NamedThread threads[] = {
+      {"imuStatus", manager->imuStatusThread},
+      {"image", manager->imageThread},
+      {"slamTracking", manager->slamTrackingThread},
+      {"leddet", manager->leddetThread},
+      {"genData", manager->genDataThread},
+      {"relocPre", manager->relocPreThread},
+      {"log", manager->logThread},
+  };
+
+  for (const auto &entry : threads) {
+    if (!entry.thread) {
+      Util::DriverLog("[Sony USB Map] {} thread=null", entry.name);
+      continue;
+    }
+
+    Util::DriverLog("[Sony USB Map] {} thread=0x{:x} if={} ep=0x{:02x} state={} winUsbActive={}",
+                    entry.name, reinterpret_cast<uint64_t>(entry.thread), entry.thread->GetInterface(),
+                    entry.thread->GetEndpoint(), entry.thread->m_state, entry.thread->m_winUsbActive);
+  }
+}
+} // namespace
+
 void *CaesarManager__initializeHook(CaesarManager *thisptr, void *arg1, void *arg2) {
   void *result = CaesarManager__initialize(thisptr, arg1, arg2);
+  LogCaesarThreadMap(thisptr);
   caesarUsbThreadGaze.Start(0);
   Framework__Thread__start(&caesarUsbThreadGaze);
   return result;
