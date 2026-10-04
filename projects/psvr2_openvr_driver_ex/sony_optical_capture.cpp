@@ -3,6 +3,7 @@
 #include "util.h"
 #include "vr_settings.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <filesystem>
