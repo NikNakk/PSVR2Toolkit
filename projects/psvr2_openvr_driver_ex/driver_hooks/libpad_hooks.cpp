@@ -8,6 +8,7 @@
 #include "vr_settings.h"
 
 #include <cstdint>
+#include <cstring>
 #include <hidsdi.h>
 #include <hidpi.h>
 
