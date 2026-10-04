@@ -37,6 +37,95 @@ Agents must not:
 
 If answering a specific interoperability question requires limited inspection of machine code, keep the question narrow, record only the resulting interface/protocol fact, and implement any downstream code independently. Do not reproduce the inspected implementation.
 
+
+## Sony internal optical tracking outputs (17 LEDs)
+
+PSVR2Toolkit can observe Sony's internal optical-processing results for the 17 Sense-controller LEDs. These **outputs may be used as behavioural ground truth** for independently developing and validating an open-source tracking implementation.
+
+Acceptable examples include recording, where available:
+
+- whether each of the 17 LEDs was detected;
+- which camera(s) detected a given LED;
+- Sony's LED-to-image-blob correspondence;
+- image-space coordinates associated with those matches;
+- timestamps and optical frame indices;
+- tracking-validity state;
+- Sony's resulting controller pose;
+- the relationship between LED-sync state/illumination timing and successful optical tracking.
+
+These observations may be captured alongside raw PSVR2 camera frames, controller reports and IMU data to create labelled datasets, tests and metrics for independently written algorithms.
+
+The intended boundary is:
+
+```text
+raw camera/controller data
+        +
+Sony/Toolkit tracking OUTPUT used as expected result
+        |
+        v
+labelled observations / tests
+        |
+        v
+independently designed implementation
+        |
+        +-- our blob detector
+        +-- our LED identification/association
+        +-- our multi-camera geometry / pose estimation
+        +-- our IMU fusion / prediction
+        |
+        v
+Monado controller pose
+```
+
+For example, an observation such as:
+
+```text
+Sony associated physical LED 11 with image blob B at (x, y) in camera 2
+```
+
+is acceptable experimental ground truth.
+
+By contrast, the **implementation that produced that result is not source material** for Monado. Do not transfer Sony or Toolkit internals such as:
+
+- hooks into Sony private functions;
+- hard-coded DLL offsets;
+- private in-memory structure layouts used only to inspect the Sony implementation;
+- decompiled control flow or tracking logic;
+- Sony's internal blob-detection, correspondence, pose-solving or fusion algorithms;
+- implementation-specific lookup tables or constants whose purpose is to reproduce Sony's algorithm.
+
+Toolkit-specific inspection code should remain research instrumentation only. The resulting Monado implementation must not require Sony DLLs, Toolkit injection, access to Sony process memory, or private Sony interfaces to build or run.
+
+### Caution: internal LED geometry/model data
+
+Distinguish observed tracking results from proprietary internal model data.
+
+If Toolkit reveals an internal Sony table containing the exact canonical 3-D coordinates or other model parameters for the 17 LEDs, do **not** automatically copy that table into Monado.
+
+Prefer, in order:
+
+1. geometry/calibration exposed through normal device or protocol interfaces;
+2. independently measured or reconstructed geometry;
+3. publicly documented hardware information;
+4. independently derived values from experimental observations.
+
+If exact internal Sony model data appears genuinely necessary for interoperability, stop and flag it for explicit provenance/legal review before using it in upstream-oriented code.
+
+### Provenance example for optical ground truth
+
+```text
+Feature: Sense LED identification
+Source of knowledge: Sony Windows driver observed through PSVR2Toolkit
+Method: Internal optical-processing output correlated with raw camera frames
+Observed protocol/behaviour: Sony identified image blob B as physical controller LED 11
+How it is used: Ground-truth label for evaluating our independent LED matcher
+Implementation provenance: Detector/matcher designed independently; no Sony tracking implementation copied
+```
+
+The governing rule is:
+
+**Sony's internal tracking OUTPUTS may be used as experimental ground truth. Sony's tracking IMPLEMENTATION must not be used as source material.**
+
 ## Monado upstream boundary
 
 Work intended to inform an eventual Monado contribution should remain reproducible from protocol facts and observable hardware/software behaviour alone.
