@@ -68,7 +68,8 @@ saves:
 - two frames immediately before the event (`relative_frame=-2,-1`);
 - three frames immediately after it (`relative_frame=+1,+2,+3`).
 
-Capture is capped at 160 frames.
+Capture is capped at 160 frames. The Sony/camera callback path only copies selected frames into a bounded memory queue;
+the actual file I/O runs on a background writer thread so disk latency does not block the native LED state machine.
 
 Each `.vi11` file contains the complete native type-11 VI record:
 
