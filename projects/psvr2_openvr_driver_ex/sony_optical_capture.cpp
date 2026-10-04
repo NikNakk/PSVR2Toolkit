@@ -34,6 +34,7 @@ struct CaptureState {
   std::filesystem::path directory;
   std::ofstream events;
   std::ofstream frames;
+  std::ofstream poses;
   std::mutex mutex;
 
   std::atomic<uint64_t> eventId{0};
@@ -101,12 +102,20 @@ initialize_if_needed()
 
       s.events.open(s.directory / "events.csv", std::ios::out | std::ios::trunc);
       s.frames.open(s.directory / "camera_frames.csv", std::ios::out | std::ios::trunc);
+      s.poses.open(s.directory / "poses.csv", std::ios::out | std::ios::trunc);
 
       if (s.events) {
         s.events << "host_us,event_id,kind,side,current_phase,current_seq,current_period,base_time,frame_cycle,payload_hex\n";
       }
       if (s.frames) {
         s.frames << "host_us,capture_index,event_id,relative_frame,image_timestamp,image_type,size,filename\n";
+      }
+      if (s.poses) {
+        s.poses
+            << "host_us,device,index,pose_time_offset_s,pose_valid,connected,tracking_result,"
+               "px,py,pz,qw,qx,qy,qz,vx,vy,vz,avx,avy,avz,"
+               "world_qw,world_qx,world_qy,world_qz,world_tx,world_ty,world_tz,"
+               "head_qw,head_qx,head_qy,head_qz,head_tx,head_ty,head_tz\n";
       }
 
       Util::DriverLog(
@@ -297,6 +306,41 @@ SonyOpticalCapture::CaptureTrackingImage(const void *imageData,
   s.history[s.historyNext] = std::move(current);
   s.historyNext = (s.historyNext + 1) % kPreFramesPerEvent;
   s.historyCount = std::min(s.historyCount + 1, static_cast<size_t>(kPreFramesPerEvent));
+}
+
+void
+SonyOpticalCapture::CapturePublishedPose(const char *deviceLabel,
+                                         uint32_t deviceIndex,
+                                         const vr::DriverPose_t &pose)
+{
+  if (!Enabled() || deviceLabel == nullptr) {
+    return;
+  }
+
+  initialize_if_needed();
+  CaptureState &s = state();
+  const uint64_t hostUs = host_timestamp_us();
+
+  std::lock_guard<std::mutex> lock(s.mutex);
+  if (!s.poses) {
+    return;
+  }
+
+  s.poses << hostUs << ',' << deviceLabel << ',' << deviceIndex << ',' << pose.poseTimeOffset << ','
+          << (pose.poseIsValid ? 1 : 0) << ',' << (pose.deviceIsConnected ? 1 : 0) << ','
+          << static_cast<int>(pose.result) << ','
+          << pose.vecPosition[0] << ',' << pose.vecPosition[1] << ',' << pose.vecPosition[2] << ','
+          << pose.qRotation.w << ',' << pose.qRotation.x << ',' << pose.qRotation.y << ',' << pose.qRotation.z << ','
+          << pose.vecVelocity[0] << ',' << pose.vecVelocity[1] << ',' << pose.vecVelocity[2] << ','
+          << pose.vecAngularVelocity[0] << ',' << pose.vecAngularVelocity[1] << ',' << pose.vecAngularVelocity[2] << ','
+          << pose.qWorldFromDriverRotation.w << ',' << pose.qWorldFromDriverRotation.x << ','
+          << pose.qWorldFromDriverRotation.y << ',' << pose.qWorldFromDriverRotation.z << ','
+          << pose.vecWorldFromDriverTranslation[0] << ',' << pose.vecWorldFromDriverTranslation[1] << ','
+          << pose.vecWorldFromDriverTranslation[2] << ','
+          << pose.qDriverFromHeadRotation.w << ',' << pose.qDriverFromHeadRotation.x << ','
+          << pose.qDriverFromHeadRotation.y << ',' << pose.qDriverFromHeadRotation.z << ','
+          << pose.vecDriverFromHeadTranslation[0] << ',' << pose.vecDriverFromHeadTranslation[1] << ','
+          << pose.vecDriverFromHeadTranslation[2] << "\n";
 }
 
 } // namespace psvr2_toolkit
